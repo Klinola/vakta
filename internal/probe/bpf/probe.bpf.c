@@ -228,3 +228,19 @@ int handle_sys_enter_clone3(struct trace_event_raw_sys_enter *ctx) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+/* -------------------- program: sys_enter_unshare → UNSHARE -------------------- */
+struct unshare_event {
+    struct vakta_hdr hdr;
+    __u64 unshare_flags;
+};
+
+SEC("tracepoint/syscalls/sys_enter_unshare")
+int handle_sys_enter_unshare(struct trace_event_raw_sys_enter *ctx) {
+    struct unshare_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_UNSHARE);
+    e->unshare_flags = (__u64)ctx->args[0];
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
