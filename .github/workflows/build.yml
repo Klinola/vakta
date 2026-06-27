@@ -1,0 +1,39 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install BPF toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libelf-dev linux-tools-common linux-tools-generic
+
+      - name: Vendor vmlinux.h from CI kernel (best effort)
+        run: |
+          if [ -f /sys/kernel/btf/vmlinux ]; then
+            sudo bpftool btf dump file /sys/kernel/btf/vmlinux format c > internal/probe/bpf/headers/vmlinux.h
+          else
+            echo "no BTF on runner; relying on committed vmlinux.h"
+          fi
+
+      - name: Generate BPF bindings
+        run: go generate ./internal/probe/...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Unit tests
+        run: go test -race ./...
