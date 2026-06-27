@@ -16,9 +16,11 @@ import (
 //
 // Used for safe lookups in a Collection or CollectionSpec.
 const (
-	probeMapDrops            = "drops"
-	probeMapEvents           = "events"
-	probeProgHandleSchedExec = "handle_sched_exec"
+	probeMapDrops                   = "drops"
+	probeMapEvents                  = "events"
+	probeProgHandleSchedExec        = "handle_sched_exec"
+	probeProgHandleSysEnterExecve   = "handle_sys_enter_execve"
+	probeProgHandleSysEnterExecveat = "handle_sys_enter_execveat"
 )
 
 // loadProbe returns the embedded CollectionSpec for probe.
@@ -63,7 +65,9 @@ type probeSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type probeProgramSpecs struct {
-	HandleSchedExec *ebpf.ProgramSpec `ebpf:"handle_sched_exec"`
+	HandleSchedExec        *ebpf.ProgramSpec `ebpf:"handle_sched_exec"`
+	HandleSysEnterExecve   *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execve"`
+	HandleSysEnterExecveat *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execveat"`
 }
 
 // probeMapSpecs contains maps before they are loaded into the kernel.
@@ -121,12 +125,16 @@ type probeVariables struct {
 //
 // It can be passed to loadProbeObjects or ebpf.CollectionSpec.LoadAndAssign.
 type probePrograms struct {
-	HandleSchedExec *ebpf.Program `ebpf:"handle_sched_exec"`
+	HandleSchedExec        *ebpf.Program `ebpf:"handle_sched_exec"`
+	HandleSysEnterExecve   *ebpf.Program `ebpf:"handle_sys_enter_execve"`
+	HandleSysEnterExecveat *ebpf.Program `ebpf:"handle_sys_enter_execveat"`
 }
 
 func (p *probePrograms) Close() error {
 	return _ProbeClose(
 		p.HandleSchedExec,
+		p.HandleSysEnterExecve,
+		p.HandleSysEnterExecveat,
 	)
 }
 

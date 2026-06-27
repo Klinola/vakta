@@ -42,6 +42,12 @@ struct exec_event {
     char  argv[ARGV_MAX];
 };
 
+#define FILENAME_MAX_LEN 128
+struct exec_attempt_event {
+    struct vakta_hdr hdr;
+    char filename[FILENAME_MAX_LEN];
+};
+
 /* -------------------- maps -------------------- */
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
@@ -99,4 +105,25 @@ int handle_sched_exec(void *ctx) {
 
     bpf_ringbuf_submit(e, 0);
     return 0;
+}
+
+/* -------------------- program: sys_enter_execve/execveat → EXEC_ATTEMPT -------------------- */
+static __always_inline int do_exec_attempt(const char *filename) {
+    struct exec_attempt_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_EXEC_ATTEMPT);
+    bpf_probe_read_user_str(&e->filename, sizeof(e->filename), filename);
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_execve")
+int handle_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
+    return do_exec_attempt((const char *)ctx->args[0]);
+}
+
+SEC("tracepoint/syscalls/sys_enter_execveat")
+int handle_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
+    /* args: dfd, filename, argv, envp, flags */
+    return do_exec_attempt((const char *)ctx->args[1]);
 }
