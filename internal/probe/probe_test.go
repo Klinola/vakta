@@ -108,3 +108,23 @@ func TestParseRecord_UnknownType(t *testing.T) {
 		t.Fatal("expected error for unknown event type")
 	}
 }
+
+func TestStatsAccessorReturnsCopy(t *testing.T) {
+	m := &Manager{
+		statsDeliveredByType: map[EventType]uint64{EventExec: 42},
+		statsMissing:         []string{"foo/bar"},
+	}
+	s := m.Stats()
+	if s.DeliveredByType[EventExec] != 42 {
+		t.Fatalf("DeliveredByType: %v", s.DeliveredByType)
+	}
+	// Mutating snapshot must not affect Manager
+	s.DeliveredByType[EventExec] = 0
+	s.MissingTracepoints[0] = "x"
+	if m.statsDeliveredByType[EventExec] != 42 {
+		t.Fatal("Stats() returned shared map")
+	}
+	if m.statsMissing[0] != "foo/bar" {
+		t.Fatal("Stats() returned shared slice")
+	}
+}

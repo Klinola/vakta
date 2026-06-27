@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -91,8 +92,34 @@ func New(ctx context.Context) (*Manager, <-chan Event, error) {
 
 	go m.readLoop()
 	go m.watchCtx(ctx)
+	go func() {
+		t := time.NewTicker(1 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				m.refreshDrops()
+			case <-m.done:
+				return
+			}
+		}
+	}()
 
 	return m, m.out, nil
+}
+
+func (m *Manager) refreshDrops() {
+	var perCPU []uint64
+	zero := uint32(0)
+	if err := m.objs.Drops.Lookup(&zero, &perCPU); err != nil {
+		slog.Warn("probe: drops map lookup", "err", err)
+		return
+	}
+	var sum uint64
+	for _, v := range perCPU {
+		sum += v
+	}
+	m.statsDropped.Store(sum)
 }
 
 func (m *Manager) attachSpecs() []attachSpec {
