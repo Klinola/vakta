@@ -103,6 +103,7 @@ func (m *Manager) attachSpecs() []attachSpec {
 		{"sched", "sched_process_exec", m.objs.HandleSchedExec},
 		{"syscalls", "sys_enter_execve", m.objs.HandleSysEnterExecve},
 		{"syscalls", "sys_enter_execveat", m.objs.HandleSysEnterExecveat},
+		{"syscalls", "sys_enter_connect", m.objs.HandleSysEnterConnect},
 	}
 }
 

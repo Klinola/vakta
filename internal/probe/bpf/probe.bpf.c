@@ -3,6 +3,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
+#include <bpf/bpf_endian.h>
 
 char LICENSE[] SEC("license") = "GPL";
 
@@ -126,4 +127,45 @@ SEC("tracepoint/syscalls/sys_enter_execveat")
 int handle_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
     /* args: dfd, filename, argv, envp, flags */
     return do_exec_attempt((const char *)ctx->args[1]);
+}
+
+/* -------------------- program: sys_enter_connect → CONNECT -------------------- */
+struct connect_event {
+    struct vakta_hdr hdr;
+    __u16 family;
+    __u16 dport;
+    __u8  addr[16];      /* zero-padded; v4 uses first 4 bytes */
+};
+
+SEC("tracepoint/syscalls/sys_enter_connect")
+int handle_sys_enter_connect(struct trace_event_raw_sys_enter *ctx) {
+    const struct sockaddr *uservaddr = (const struct sockaddr *)ctx->args[1];
+    if (!uservaddr) return 0;
+
+    /* Read family first */
+    __u16 family = 0;
+    bpf_probe_read_user(&family, sizeof(family), uservaddr);
+
+    struct connect_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_CONNECT);
+    e->family = family;
+    __builtin_memset(e->addr, 0, sizeof(e->addr));
+
+    if (family == 2 /* AF_INET */) {
+        struct sockaddr_in s4 = {};
+        bpf_probe_read_user(&s4, sizeof(s4), uservaddr);
+        e->dport = bpf_ntohs(s4.sin_port);
+        __builtin_memcpy(&e->addr[0], &s4.sin_addr, 4);
+    } else if (family == 10 /* AF_INET6 */) {
+        struct sockaddr_in6 s6 = {};
+        bpf_probe_read_user(&s6, sizeof(s6), uservaddr);
+        e->dport = bpf_ntohs(s6.sin6_port);
+        __builtin_memcpy(&e->addr[0], &s6.sin6_addr, 16);
+    } else {
+        e->dport = 0;
+    }
+
+    bpf_ringbuf_submit(e, 0);
+    return 0;
 }
