@@ -16,7 +16,7 @@ func TestEventTypeConstants(t *testing.T) {
 	}
 }
 
-// buildHeader returns 44 bytes that decode into an EventHeader.
+// buildHeader returns 48 bytes that decode into an EventHeader.
 func buildHeader(t EventType) []byte {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, uint64(0xdeadbeef)) // ts
@@ -28,13 +28,14 @@ func buildHeader(t EventType) []byte {
 	var comm [16]byte
 	copy(comm[:], "test\x00")
 	buf.Write(comm[:])
+	buf.Write(make([]byte, 4)) // trailing pad to 8-byte alignment
 	return buf.Bytes()
 }
 
 func TestParseRecord_HeaderSize(t *testing.T) {
 	got := unsafe.Sizeof(EventHeader{})
-	if got != 44 {
-		t.Fatalf("sizeof(EventHeader) = %d, want 44", got)
+	if got != 48 {
+		t.Fatalf("sizeof(EventHeader) = %d, want 48", got)
 	}
 }
 
