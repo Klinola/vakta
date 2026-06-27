@@ -312,3 +312,22 @@ int handle_sys_enter_bpf(struct trace_event_raw_sys_enter *ctx) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+/* -------------------- program: sys_enter_memfd_create → MEMFD -------------------- */
+#define MEMFD_NAME_MAX 64
+struct memfd_event {
+    struct vakta_hdr hdr;
+    __u32 flags;
+    char  name[MEMFD_NAME_MAX];
+};
+
+SEC("tracepoint/syscalls/sys_enter_memfd_create")
+int handle_sys_enter_memfd_create(struct trace_event_raw_sys_enter *ctx) {
+    struct memfd_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_MEMFD);
+    e->flags = (__u32)ctx->args[1];
+    bpf_probe_read_user_str(&e->name, sizeof(e->name), (const char *)ctx->args[0]);
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
