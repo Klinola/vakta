@@ -16,18 +16,20 @@ import (
 //
 // Used for safe lookups in a Collection or CollectionSpec.
 const (
-	probeMapDrops                   = "drops"
-	probeMapEvents                  = "events"
-	probeProgHandleSchedExec        = "handle_sched_exec"
-	probeProgHandleSysEnterClone    = "handle_sys_enter_clone"
-	probeProgHandleSysEnterClone3   = "handle_sys_enter_clone3"
-	probeProgHandleSysEnterConnect  = "handle_sys_enter_connect"
-	probeProgHandleSysEnterExecve   = "handle_sys_enter_execve"
-	probeProgHandleSysEnterExecveat = "handle_sys_enter_execveat"
-	probeProgHandleSysEnterOpen     = "handle_sys_enter_open"
-	probeProgHandleSysEnterOpenat   = "handle_sys_enter_openat"
-	probeProgHandleSysEnterPtrace   = "handle_sys_enter_ptrace"
-	probeProgHandleSysEnterUnshare  = "handle_sys_enter_unshare"
+	probeMapDrops                      = "drops"
+	probeMapEvents                     = "events"
+	probeProgHandleSchedExec           = "handle_sched_exec"
+	probeProgHandleSysEnterClone       = "handle_sys_enter_clone"
+	probeProgHandleSysEnterClone3      = "handle_sys_enter_clone3"
+	probeProgHandleSysEnterConnect     = "handle_sys_enter_connect"
+	probeProgHandleSysEnterExecve      = "handle_sys_enter_execve"
+	probeProgHandleSysEnterExecveat    = "handle_sys_enter_execveat"
+	probeProgHandleSysEnterFinitModule = "handle_sys_enter_finit_module"
+	probeProgHandleSysEnterInitModule  = "handle_sys_enter_init_module"
+	probeProgHandleSysEnterOpen        = "handle_sys_enter_open"
+	probeProgHandleSysEnterOpenat      = "handle_sys_enter_openat"
+	probeProgHandleSysEnterPtrace      = "handle_sys_enter_ptrace"
+	probeProgHandleSysEnterUnshare     = "handle_sys_enter_unshare"
 )
 
 // loadProbe returns the embedded CollectionSpec for probe.
@@ -72,16 +74,18 @@ type probeSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type probeProgramSpecs struct {
-	HandleSchedExec        *ebpf.ProgramSpec `ebpf:"handle_sched_exec"`
-	HandleSysEnterClone    *ebpf.ProgramSpec `ebpf:"handle_sys_enter_clone"`
-	HandleSysEnterClone3   *ebpf.ProgramSpec `ebpf:"handle_sys_enter_clone3"`
-	HandleSysEnterConnect  *ebpf.ProgramSpec `ebpf:"handle_sys_enter_connect"`
-	HandleSysEnterExecve   *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execve"`
-	HandleSysEnterExecveat *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execveat"`
-	HandleSysEnterOpen     *ebpf.ProgramSpec `ebpf:"handle_sys_enter_open"`
-	HandleSysEnterOpenat   *ebpf.ProgramSpec `ebpf:"handle_sys_enter_openat"`
-	HandleSysEnterPtrace   *ebpf.ProgramSpec `ebpf:"handle_sys_enter_ptrace"`
-	HandleSysEnterUnshare  *ebpf.ProgramSpec `ebpf:"handle_sys_enter_unshare"`
+	HandleSchedExec           *ebpf.ProgramSpec `ebpf:"handle_sched_exec"`
+	HandleSysEnterClone       *ebpf.ProgramSpec `ebpf:"handle_sys_enter_clone"`
+	HandleSysEnterClone3      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_clone3"`
+	HandleSysEnterConnect     *ebpf.ProgramSpec `ebpf:"handle_sys_enter_connect"`
+	HandleSysEnterExecve      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execve"`
+	HandleSysEnterExecveat    *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execveat"`
+	HandleSysEnterFinitModule *ebpf.ProgramSpec `ebpf:"handle_sys_enter_finit_module"`
+	HandleSysEnterInitModule  *ebpf.ProgramSpec `ebpf:"handle_sys_enter_init_module"`
+	HandleSysEnterOpen        *ebpf.ProgramSpec `ebpf:"handle_sys_enter_open"`
+	HandleSysEnterOpenat      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_openat"`
+	HandleSysEnterPtrace      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_ptrace"`
+	HandleSysEnterUnshare     *ebpf.ProgramSpec `ebpf:"handle_sys_enter_unshare"`
 }
 
 // probeMapSpecs contains maps before they are loaded into the kernel.
@@ -139,16 +143,18 @@ type probeVariables struct {
 //
 // It can be passed to loadProbeObjects or ebpf.CollectionSpec.LoadAndAssign.
 type probePrograms struct {
-	HandleSchedExec        *ebpf.Program `ebpf:"handle_sched_exec"`
-	HandleSysEnterClone    *ebpf.Program `ebpf:"handle_sys_enter_clone"`
-	HandleSysEnterClone3   *ebpf.Program `ebpf:"handle_sys_enter_clone3"`
-	HandleSysEnterConnect  *ebpf.Program `ebpf:"handle_sys_enter_connect"`
-	HandleSysEnterExecve   *ebpf.Program `ebpf:"handle_sys_enter_execve"`
-	HandleSysEnterExecveat *ebpf.Program `ebpf:"handle_sys_enter_execveat"`
-	HandleSysEnterOpen     *ebpf.Program `ebpf:"handle_sys_enter_open"`
-	HandleSysEnterOpenat   *ebpf.Program `ebpf:"handle_sys_enter_openat"`
-	HandleSysEnterPtrace   *ebpf.Program `ebpf:"handle_sys_enter_ptrace"`
-	HandleSysEnterUnshare  *ebpf.Program `ebpf:"handle_sys_enter_unshare"`
+	HandleSchedExec           *ebpf.Program `ebpf:"handle_sched_exec"`
+	HandleSysEnterClone       *ebpf.Program `ebpf:"handle_sys_enter_clone"`
+	HandleSysEnterClone3      *ebpf.Program `ebpf:"handle_sys_enter_clone3"`
+	HandleSysEnterConnect     *ebpf.Program `ebpf:"handle_sys_enter_connect"`
+	HandleSysEnterExecve      *ebpf.Program `ebpf:"handle_sys_enter_execve"`
+	HandleSysEnterExecveat    *ebpf.Program `ebpf:"handle_sys_enter_execveat"`
+	HandleSysEnterFinitModule *ebpf.Program `ebpf:"handle_sys_enter_finit_module"`
+	HandleSysEnterInitModule  *ebpf.Program `ebpf:"handle_sys_enter_init_module"`
+	HandleSysEnterOpen        *ebpf.Program `ebpf:"handle_sys_enter_open"`
+	HandleSysEnterOpenat      *ebpf.Program `ebpf:"handle_sys_enter_openat"`
+	HandleSysEnterPtrace      *ebpf.Program `ebpf:"handle_sys_enter_ptrace"`
+	HandleSysEnterUnshare     *ebpf.Program `ebpf:"handle_sys_enter_unshare"`
 }
 
 func (p *probePrograms) Close() error {
@@ -159,6 +165,8 @@ func (p *probePrograms) Close() error {
 		p.HandleSysEnterConnect,
 		p.HandleSysEnterExecve,
 		p.HandleSysEnterExecveat,
+		p.HandleSysEnterFinitModule,
+		p.HandleSysEnterInitModule,
 		p.HandleSysEnterOpen,
 		p.HandleSysEnterOpenat,
 		p.HandleSysEnterPtrace,

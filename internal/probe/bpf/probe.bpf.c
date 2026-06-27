@@ -262,3 +262,30 @@ int handle_sys_enter_ptrace(struct trace_event_raw_sys_enter *ctx) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+/* -------------------- program: sys_enter_init_module/finit_module → MODULE_LOAD -------------------- */
+#define MOD_NAME_MAX 64
+struct module_load_event {
+    struct vakta_hdr hdr;
+    char name[MOD_NAME_MAX];
+};
+
+SEC("tracepoint/syscalls/sys_enter_init_module")
+int handle_sys_enter_init_module(struct trace_event_raw_sys_enter *ctx) {
+    struct module_load_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_MODULE_LOAD);
+    e->name[0] = 0;
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_finit_module")
+int handle_sys_enter_finit_module(struct trace_event_raw_sys_enter *ctx) {
+    struct module_load_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_MODULE_LOAD);
+    e->name[0] = 0;
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
