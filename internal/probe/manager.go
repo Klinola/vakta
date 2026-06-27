@@ -36,6 +36,7 @@ type Manager struct {
 
 	out  chan Event
 	done chan struct{}
+	quit chan struct{} // closed by Close to release a stuck send
 
 	statsMu              sync.Mutex
 	statsMissing         []string
@@ -58,6 +59,7 @@ func New(ctx context.Context) (*Manager, <-chan Event, error) {
 	m := &Manager{
 		out:                  make(chan Event, 4096),
 		done:                 make(chan struct{}),
+		quit:                 make(chan struct{}),
 		statsDeliveredByType: make(map[EventType]uint64),
 	}
 
@@ -168,7 +170,12 @@ func (m *Manager) readLoop() {
 		m.statsMu.Lock()
 		m.statsDeliveredByType[ev.Header().Type]++
 		m.statsMu.Unlock()
-		m.out <- ev // blocks if consumer is slow → backpressure to kernel
+		select {
+		case m.out <- ev:
+			// backpressure to kernel; consumer is draining
+		case <-m.quit:
+			return
+		}
 	}
 }
 
@@ -198,6 +205,7 @@ func (m *Manager) Stats() Stats {
 // Safe to call multiple times.
 func (m *Manager) Close() error {
 	m.closeOnce.Do(func() {
+		close(m.quit) // release any goroutine stuck on m.out <- ev
 		if m.reader != nil {
 			_ = m.reader.Close()
 		}

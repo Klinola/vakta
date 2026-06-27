@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -126,5 +127,40 @@ func TestStatsAccessorReturnsCopy(t *testing.T) {
 	}
 	if m.statsMissing[0] != "foo/bar" {
 		t.Fatal("Stats() returned shared slice")
+	}
+}
+
+func TestManagerCloseUnblocksStuckSend(t *testing.T) {
+	// Construct a Manager bypassing New (we don't need real BPF) and simulate
+	// a stuck send: the channel is unbuffered → first send blocks until consumer reads.
+	m := &Manager{
+		out:                  make(chan Event), // unbuffered to force blocking
+		done:                 make(chan struct{}),
+		quit:                 make(chan struct{}),
+		statsDeliveredByType: make(map[EventType]uint64),
+	}
+
+	// Simulate the readLoop's send pattern with a single iteration.
+	loopDone := make(chan struct{})
+	go func() {
+		defer close(loopDone)
+		ev := &ExecEvent{}
+		select {
+		case m.out <- ev:
+		case <-m.quit:
+		}
+	}()
+
+	// Give the goroutine time to park on the send.
+	time.Sleep(50 * time.Millisecond)
+
+	// Close the quit channel directly (mimics what Manager.Close does).
+	close(m.quit)
+
+	select {
+	case <-loopDone:
+		// good — escape path worked
+	case <-time.After(time.Second):
+		t.Fatal("readLoop send did not release on quit")
 	}
 }

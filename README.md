@@ -9,7 +9,7 @@ Early development. The probe layer (this repo's `internal/probe/`) emits typed e
 ## Requirements
 
 - Linux kernel ≥ 5.8 with `CONFIG_DEBUG_INFO_BTF=y` (check `/sys/kernel/btf/vmlinux` exists)
-- Go ≥ 1.22
+- Go ≥ 1.25
 - clang/LLVM ≥ 14
 - `bpftool` (only needed to refresh `vmlinux.h`; ship with the repo for normal builds)
 

@@ -99,7 +99,7 @@ int handle_sched_exec(void *ctx) {
     unsigned long arg_start = BPF_CORE_READ(mm, arg_start);
     unsigned long arg_end   = BPF_CORE_READ(mm, arg_end);
     unsigned long len = arg_end - arg_start;
-    if (len > ARGV_MAX) len = ARGV_MAX;
+    if (len > ARGV_MAX - 1) len = ARGV_MAX - 1;
     /* mask to make verifier happy about the bounded write */
     bpf_probe_read_user(&e->argv[0], len & (ARGV_MAX - 1), (void *)arg_start);
     e->argv_len = len;
