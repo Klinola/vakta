@@ -289,3 +289,26 @@ int handle_sys_enter_finit_module(struct trace_event_raw_sys_enter *ctx) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+/* -------------------- program: sys_enter_bpf → BPF_LOAD -------------------- */
+#define BPF_PROG_LOAD 5
+struct bpf_load_event {
+    struct vakta_hdr hdr;
+    __u32 prog_type;
+};
+
+SEC("tracepoint/syscalls/sys_enter_bpf")
+int handle_sys_enter_bpf(struct trace_event_raw_sys_enter *ctx) {
+    int cmd = (int)ctx->args[0];
+    if (cmd != BPF_PROG_LOAD) return 0;
+
+    union bpf_attr attr = {};
+    bpf_probe_read_user(&attr, sizeof(attr), (void *)ctx->args[1]);
+
+    struct bpf_load_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_BPF_LOAD);
+    e->prog_type = attr.prog_type;
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}

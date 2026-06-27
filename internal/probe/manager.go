@@ -112,6 +112,7 @@ func (m *Manager) attachSpecs() []attachSpec {
 		{"syscalls", "sys_enter_ptrace", m.objs.HandleSysEnterPtrace},
 		{"syscalls", "sys_enter_init_module", m.objs.HandleSysEnterInitModule},
 		{"syscalls", "sys_enter_finit_module", m.objs.HandleSysEnterFinitModule},
+		{"syscalls", "sys_enter_bpf", m.objs.HandleSysEnterBpf},
 	}
 }
 
