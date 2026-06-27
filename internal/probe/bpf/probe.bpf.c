@@ -395,3 +395,21 @@ int handle_sys_enter_mmap(struct trace_event_raw_sys_enter *ctx) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+/* -------------------- program: sys_enter_kill → PROC_PROBE (sig=0) -------------------- */
+struct proc_probe_event {
+    struct vakta_hdr hdr;
+    __u32 target_pid;
+};
+
+SEC("tracepoint/syscalls/sys_enter_kill")
+int handle_sys_enter_kill(struct trace_event_raw_sys_enter *ctx) {
+    int sig = (int)ctx->args[1];
+    if (sig != 0) return 0;
+    struct proc_probe_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_PROC_PROBE);
+    e->target_pid = (__u32)ctx->args[0];
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
