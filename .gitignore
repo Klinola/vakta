@@ -1,0 +1,13 @@
+bin/
+*.o
+*.bpf.o
+vmlinux.h
+.vscode/
+.idea/
+
+# vendored vmlinux.h is committed (regenerable via headers/update.sh)
+!internal/probe/bpf/headers/vmlinux.h
+
+# bpf2go outputs are generated, not source
+internal/probe/probe_bpfel.o
+internal/probe/probe_bpfeb.o
