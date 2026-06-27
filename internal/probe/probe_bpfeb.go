@@ -19,6 +19,8 @@ const (
 	probeMapDrops                   = "drops"
 	probeMapEvents                  = "events"
 	probeProgHandleSchedExec        = "handle_sched_exec"
+	probeProgHandleSysEnterClone    = "handle_sys_enter_clone"
+	probeProgHandleSysEnterClone3   = "handle_sys_enter_clone3"
 	probeProgHandleSysEnterConnect  = "handle_sys_enter_connect"
 	probeProgHandleSysEnterExecve   = "handle_sys_enter_execve"
 	probeProgHandleSysEnterExecveat = "handle_sys_enter_execveat"
@@ -69,6 +71,8 @@ type probeSpecs struct {
 // It can be passed ebpf.CollectionSpec.Assign.
 type probeProgramSpecs struct {
 	HandleSchedExec        *ebpf.ProgramSpec `ebpf:"handle_sched_exec"`
+	HandleSysEnterClone    *ebpf.ProgramSpec `ebpf:"handle_sys_enter_clone"`
+	HandleSysEnterClone3   *ebpf.ProgramSpec `ebpf:"handle_sys_enter_clone3"`
 	HandleSysEnterConnect  *ebpf.ProgramSpec `ebpf:"handle_sys_enter_connect"`
 	HandleSysEnterExecve   *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execve"`
 	HandleSysEnterExecveat *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execveat"`
@@ -132,6 +136,8 @@ type probeVariables struct {
 // It can be passed to loadProbeObjects or ebpf.CollectionSpec.LoadAndAssign.
 type probePrograms struct {
 	HandleSchedExec        *ebpf.Program `ebpf:"handle_sched_exec"`
+	HandleSysEnterClone    *ebpf.Program `ebpf:"handle_sys_enter_clone"`
+	HandleSysEnterClone3   *ebpf.Program `ebpf:"handle_sys_enter_clone3"`
 	HandleSysEnterConnect  *ebpf.Program `ebpf:"handle_sys_enter_connect"`
 	HandleSysEnterExecve   *ebpf.Program `ebpf:"handle_sys_enter_execve"`
 	HandleSysEnterExecveat *ebpf.Program `ebpf:"handle_sys_enter_execveat"`
@@ -142,6 +148,8 @@ type probePrograms struct {
 func (p *probePrograms) Close() error {
 	return _ProbeClose(
 		p.HandleSchedExec,
+		p.HandleSysEnterClone,
+		p.HandleSysEnterClone3,
 		p.HandleSysEnterConnect,
 		p.HandleSysEnterExecve,
 		p.HandleSysEnterExecveat,

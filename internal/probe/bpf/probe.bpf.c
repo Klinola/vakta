@@ -199,3 +199,32 @@ int handle_sys_enter_open(struct trace_event_raw_sys_enter *ctx) {
     /* args: filename, flags, mode */
     return do_open((const char *)ctx->args[0], (__s32)ctx->args[1]);
 }
+
+/* -------------------- program: sys_enter_clone/clone3 → CLONE -------------------- */
+struct clone_event {
+    struct vakta_hdr hdr;
+    __u64 clone_flags;
+};
+
+SEC("tracepoint/syscalls/sys_enter_clone")
+int handle_sys_enter_clone(struct trace_event_raw_sys_enter *ctx) {
+    struct clone_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_CLONE);
+    e->clone_flags = (__u64)ctx->args[0];
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_clone3")
+int handle_sys_enter_clone3(struct trace_event_raw_sys_enter *ctx) {
+    /* args: cl_args, size */
+    struct clone_args ca = {};
+    bpf_probe_read_user(&ca, sizeof(ca), (void *)ctx->args[0]);
+    struct clone_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_CLONE);
+    e->clone_flags = ca.flags;
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
