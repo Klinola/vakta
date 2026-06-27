@@ -31,6 +31,7 @@ const (
 	probeProgHandleSysEnterFinitModule = "handle_sys_enter_finit_module"
 	probeProgHandleSysEnterInitModule  = "handle_sys_enter_init_module"
 	probeProgHandleSysEnterMemfdCreate = "handle_sys_enter_memfd_create"
+	probeProgHandleSysEnterMmap        = "handle_sys_enter_mmap"
 	probeProgHandleSysEnterOpen        = "handle_sys_enter_open"
 	probeProgHandleSysEnterOpenat      = "handle_sys_enter_openat"
 	probeProgHandleSysEnterPtrace      = "handle_sys_enter_ptrace"
@@ -92,6 +93,7 @@ type probeProgramSpecs struct {
 	HandleSysEnterFinitModule *ebpf.ProgramSpec `ebpf:"handle_sys_enter_finit_module"`
 	HandleSysEnterInitModule  *ebpf.ProgramSpec `ebpf:"handle_sys_enter_init_module"`
 	HandleSysEnterMemfdCreate *ebpf.ProgramSpec `ebpf:"handle_sys_enter_memfd_create"`
+	HandleSysEnterMmap        *ebpf.ProgramSpec `ebpf:"handle_sys_enter_mmap"`
 	HandleSysEnterOpen        *ebpf.ProgramSpec `ebpf:"handle_sys_enter_open"`
 	HandleSysEnterOpenat      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_openat"`
 	HandleSysEnterPtrace      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_ptrace"`
@@ -166,6 +168,7 @@ type probePrograms struct {
 	HandleSysEnterFinitModule *ebpf.Program `ebpf:"handle_sys_enter_finit_module"`
 	HandleSysEnterInitModule  *ebpf.Program `ebpf:"handle_sys_enter_init_module"`
 	HandleSysEnterMemfdCreate *ebpf.Program `ebpf:"handle_sys_enter_memfd_create"`
+	HandleSysEnterMmap        *ebpf.Program `ebpf:"handle_sys_enter_mmap"`
 	HandleSysEnterOpen        *ebpf.Program `ebpf:"handle_sys_enter_open"`
 	HandleSysEnterOpenat      *ebpf.Program `ebpf:"handle_sys_enter_openat"`
 	HandleSysEnterPtrace      *ebpf.Program `ebpf:"handle_sys_enter_ptrace"`
@@ -187,6 +190,7 @@ func (p *probePrograms) Close() error {
 		p.HandleSysEnterFinitModule,
 		p.HandleSysEnterInitModule,
 		p.HandleSysEnterMemfdCreate,
+		p.HandleSysEnterMmap,
 		p.HandleSysEnterOpen,
 		p.HandleSysEnterOpenat,
 		p.HandleSysEnterPtrace,

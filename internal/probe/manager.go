@@ -117,6 +117,7 @@ func (m *Manager) attachSpecs() []attachSpec {
 		{"syscalls", "sys_enter_chmod", m.objs.HandleSysEnterChmod},
 		{"syscalls", "sys_enter_fchmod", m.objs.HandleSysEnterFchmod},
 		{"syscalls", "sys_enter_fchmodat", m.objs.HandleSysEnterFchmodat},
+		{"syscalls", "sys_enter_mmap", m.objs.HandleSysEnterMmap},
 	}
 }
 

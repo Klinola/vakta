@@ -371,3 +371,27 @@ int handle_sys_enter_fchmodat(struct trace_event_raw_sys_enter *ctx) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+/* -------------------- program: sys_enter_mmap → MMAP_EXEC (PROT_EXEC|PROT_WRITE) -------------------- */
+#define PROT_WRITE_BIT 0x2
+#define PROT_EXEC_BIT  0x4
+struct mmap_exec_event {
+    struct vakta_hdr hdr;
+    __u64 addr;
+    __u64 len;
+    __u32 prot;
+};
+
+SEC("tracepoint/syscalls/sys_enter_mmap")
+int handle_sys_enter_mmap(struct trace_event_raw_sys_enter *ctx) {
+    __u32 prot = (__u32)ctx->args[2];
+    if (!(prot & PROT_WRITE_BIT) || !(prot & PROT_EXEC_BIT)) return 0;
+    struct mmap_exec_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_MMAP_EXEC);
+    e->addr = (__u64)ctx->args[0];
+    e->len  = (__u64)ctx->args[1];
+    e->prot = prot;
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
