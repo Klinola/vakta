@@ -331,3 +331,43 @@ int handle_sys_enter_memfd_create(struct trace_event_raw_sys_enter *ctx) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+/* -------------------- program: sys_enter_chmod/fchmod/fchmodat → CHMOD -------------------- */
+struct chmod_event {
+    struct vakta_hdr hdr;
+    __u32 mode;
+    char  path[PATH_MAX_LEN];
+};
+
+SEC("tracepoint/syscalls/sys_enter_chmod")
+int handle_sys_enter_chmod(struct trace_event_raw_sys_enter *ctx) {
+    struct chmod_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_CHMOD);
+    e->mode = (__u32)ctx->args[1];
+    bpf_probe_read_user_str(&e->path, sizeof(e->path), (const char *)ctx->args[0]);
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_fchmod")
+int handle_sys_enter_fchmod(struct trace_event_raw_sys_enter *ctx) {
+    struct chmod_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_CHMOD);
+    e->mode = (__u32)ctx->args[1];
+    e->path[0] = 0;
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_fchmodat")
+int handle_sys_enter_fchmodat(struct trace_event_raw_sys_enter *ctx) {
+    struct chmod_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_CHMOD);
+    e->mode = (__u32)ctx->args[2];
+    bpf_probe_read_user_str(&e->path, sizeof(e->path), (const char *)ctx->args[1]);
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
