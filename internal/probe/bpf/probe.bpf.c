@@ -244,3 +244,21 @@ int handle_sys_enter_unshare(struct trace_event_raw_sys_enter *ctx) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+/* -------------------- program: sys_enter_ptrace → PTRACE -------------------- */
+struct ptrace_event {
+    struct vakta_hdr hdr;
+    __s64 request;
+    __u32 target_pid;
+};
+
+SEC("tracepoint/syscalls/sys_enter_ptrace")
+int handle_sys_enter_ptrace(struct trace_event_raw_sys_enter *ctx) {
+    struct ptrace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_PTRACE);
+    e->request    = (__s64)ctx->args[0];
+    e->target_pid = (__u32)ctx->args[1];
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
