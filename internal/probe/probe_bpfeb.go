@@ -22,6 +22,8 @@ const (
 	probeProgHandleSysEnterConnect  = "handle_sys_enter_connect"
 	probeProgHandleSysEnterExecve   = "handle_sys_enter_execve"
 	probeProgHandleSysEnterExecveat = "handle_sys_enter_execveat"
+	probeProgHandleSysEnterOpen     = "handle_sys_enter_open"
+	probeProgHandleSysEnterOpenat   = "handle_sys_enter_openat"
 )
 
 // loadProbe returns the embedded CollectionSpec for probe.
@@ -70,6 +72,8 @@ type probeProgramSpecs struct {
 	HandleSysEnterConnect  *ebpf.ProgramSpec `ebpf:"handle_sys_enter_connect"`
 	HandleSysEnterExecve   *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execve"`
 	HandleSysEnterExecveat *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execveat"`
+	HandleSysEnterOpen     *ebpf.ProgramSpec `ebpf:"handle_sys_enter_open"`
+	HandleSysEnterOpenat   *ebpf.ProgramSpec `ebpf:"handle_sys_enter_openat"`
 }
 
 // probeMapSpecs contains maps before they are loaded into the kernel.
@@ -131,6 +135,8 @@ type probePrograms struct {
 	HandleSysEnterConnect  *ebpf.Program `ebpf:"handle_sys_enter_connect"`
 	HandleSysEnterExecve   *ebpf.Program `ebpf:"handle_sys_enter_execve"`
 	HandleSysEnterExecveat *ebpf.Program `ebpf:"handle_sys_enter_execveat"`
+	HandleSysEnterOpen     *ebpf.Program `ebpf:"handle_sys_enter_open"`
+	HandleSysEnterOpenat   *ebpf.Program `ebpf:"handle_sys_enter_openat"`
 }
 
 func (p *probePrograms) Close() error {
@@ -139,6 +145,8 @@ func (p *probePrograms) Close() error {
 		p.HandleSysEnterConnect,
 		p.HandleSysEnterExecve,
 		p.HandleSysEnterExecveat,
+		p.HandleSysEnterOpen,
+		p.HandleSysEnterOpenat,
 	)
 }
 

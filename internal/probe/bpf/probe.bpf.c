@@ -169,3 +169,33 @@ int handle_sys_enter_connect(struct trace_event_raw_sys_enter *ctx) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+/* -------------------- program: sys_enter_openat/open → OPEN -------------------- */
+#define PATH_MAX_LEN 256
+struct open_event {
+    struct vakta_hdr hdr;
+    __s32 flags;
+    char  path[PATH_MAX_LEN];
+};
+
+static __always_inline int do_open(const char *path, __s32 flags) {
+    struct open_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e) { incr_drop(); return 0; }
+    fill_hdr(&e->hdr, VK_OPEN);
+    e->flags = flags;
+    bpf_probe_read_user_str(&e->path, sizeof(e->path), path);
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_openat")
+int handle_sys_enter_openat(struct trace_event_raw_sys_enter *ctx) {
+    /* args: dfd, filename, flags, mode */
+    return do_open((const char *)ctx->args[1], (__s32)ctx->args[2]);
+}
+
+SEC("tracepoint/syscalls/sys_enter_open")
+int handle_sys_enter_open(struct trace_event_raw_sys_enter *ctx) {
+    /* args: filename, flags, mode */
+    return do_open((const char *)ctx->args[0], (__s32)ctx->args[1]);
+}

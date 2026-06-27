@@ -104,6 +104,8 @@ func (m *Manager) attachSpecs() []attachSpec {
 		{"syscalls", "sys_enter_execve", m.objs.HandleSysEnterExecve},
 		{"syscalls", "sys_enter_execveat", m.objs.HandleSysEnterExecveat},
 		{"syscalls", "sys_enter_connect", m.objs.HandleSysEnterConnect},
+		{"syscalls", "sys_enter_openat", m.objs.HandleSysEnterOpenat},
+		{"syscalls", "sys_enter_open", m.objs.HandleSysEnterOpen},
 	}
 }
 
