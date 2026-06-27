@@ -16,8 +16,9 @@ import (
 //
 // Used for safe lookups in a Collection or CollectionSpec.
 const (
-	probeMapEvents      = "events"
-	probeProgHandleStub = "handle_stub"
+	probeMapDrops            = "drops"
+	probeMapEvents           = "events"
+	probeProgHandleSchedExec = "handle_sched_exec"
 )
 
 // loadProbe returns the embedded CollectionSpec for probe.
@@ -62,13 +63,14 @@ type probeSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type probeProgramSpecs struct {
-	HandleStub *ebpf.ProgramSpec `ebpf:"handle_stub"`
+	HandleSchedExec *ebpf.ProgramSpec `ebpf:"handle_sched_exec"`
 }
 
 // probeMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type probeMapSpecs struct {
+	Drops  *ebpf.MapSpec `ebpf:"drops"`
 	Events *ebpf.MapSpec `ebpf:"events"`
 }
 
@@ -98,11 +100,13 @@ func (o *probeObjects) Close() error {
 //
 // It can be passed to loadProbeObjects or ebpf.CollectionSpec.LoadAndAssign.
 type probeMaps struct {
+	Drops  *ebpf.Map `ebpf:"drops"`
 	Events *ebpf.Map `ebpf:"events"`
 }
 
 func (m *probeMaps) Close() error {
 	return _ProbeClose(
+		m.Drops,
 		m.Events,
 	)
 }
@@ -117,12 +121,12 @@ type probeVariables struct {
 //
 // It can be passed to loadProbeObjects or ebpf.CollectionSpec.LoadAndAssign.
 type probePrograms struct {
-	HandleStub *ebpf.Program `ebpf:"handle_stub"`
+	HandleSchedExec *ebpf.Program `ebpf:"handle_sched_exec"`
 }
 
 func (p *probePrograms) Close() error {
 	return _ProbeClose(
-		p.HandleStub,
+		p.HandleSchedExec,
 	)
 }
 
