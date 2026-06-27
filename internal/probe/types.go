@@ -1,6 +1,11 @@
 package probe
 
-import "net/netip"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"net/netip"
+)
 
 // EventType is the discriminator stamped on every record's header.
 // Values mirror enum vakta_event_type in probe.bpf.c.
@@ -24,14 +29,19 @@ const (
 
 // EventHeader is the 44-byte common prefix of every record on the wire.
 // Field order and types MUST match struct vakta_hdr in probe.bpf.c.
+//
+// TsNs is split into two uint32 halves to keep Go's in-memory size at 44 bytes
+// (matching the wire format). A uint64 here would force 8-byte struct alignment,
+// padding the trailing size to 48.
 type EventHeader struct {
-	TsNs uint64
-	PID  uint32
-	PPID uint32
-	UID  uint32
-	GID  uint32
-	Type EventType
-	Comm [16]byte
+	TsNsLo uint32
+	TsNsHi uint32
+	PID    uint32
+	PPID   uint32
+	UID    uint32
+	GID    uint32
+	Type   EventType
+	Comm   [16]byte
 }
 
 // Event is what the probe channel delivers. Consumers type-switch:
@@ -142,3 +152,126 @@ type ProcProbeEvent struct {
 }
 
 func (e *ProcProbeEvent) Header() EventHeader { return e.EventHeader }
+
+const headerSize = 44
+
+// parseRecord turns a raw ringbuf record into a typed Event.
+// Wire format: 44-byte EventHeader followed by per-type body.
+func parseRecord(raw []byte) (Event, error) {
+	if len(raw) < headerSize {
+		return nil, fmt.Errorf("short record: %d bytes", len(raw))
+	}
+	var hdr EventHeader
+	if err := binary.Read(bytes.NewReader(raw[:headerSize]), binary.LittleEndian, &hdr); err != nil {
+		return nil, fmt.Errorf("decode header: %w", err)
+	}
+	body := raw[headerSize:]
+	switch hdr.Type {
+	case EventExecAttempt:
+		return &ExecAttemptEvent{EventHeader: hdr, Filename: cstring(body)}, nil
+	case EventExec:
+		if len(body) < 4 {
+			return nil, fmt.Errorf("exec: short body")
+		}
+		n := binary.LittleEndian.Uint32(body[:4])
+		argv := body[4:]
+		if int(n) > len(argv) {
+			n = uint32(len(argv))
+		}
+		return &ExecEvent{EventHeader: hdr, Argv: splitNul(argv[:n])}, nil
+	case EventConnect:
+		if len(body) < 20 {
+			return nil, fmt.Errorf("connect: short body")
+		}
+		family := binary.LittleEndian.Uint16(body[0:2])
+		port := binary.LittleEndian.Uint16(body[2:4])
+		var ip netip.Addr
+		switch family {
+		case 2: // AF_INET
+			ip = netip.AddrFrom4([4]byte{body[4], body[5], body[6], body[7]})
+		case 10: // AF_INET6
+			var a [16]byte
+			copy(a[:], body[4:20])
+			ip = netip.AddrFrom16(a)
+		}
+		return &ConnectEvent{EventHeader: hdr, Family: family, DstIP: ip, DstPort: port}, nil
+	case EventOpen:
+		if len(body) < 4 {
+			return nil, fmt.Errorf("open: short body")
+		}
+		flags := int32(binary.LittleEndian.Uint32(body[:4]))
+		return &OpenEvent{EventHeader: hdr, Flags: flags, Path: cstring(body[4:])}, nil
+	case EventClone:
+		if len(body) < 8 {
+			return nil, fmt.Errorf("clone: short body")
+		}
+		return &CloneEvent{EventHeader: hdr, CloneFlags: binary.LittleEndian.Uint64(body[:8])}, nil
+	case EventUnshare:
+		if len(body) < 8 {
+			return nil, fmt.Errorf("unshare: short body")
+		}
+		return &UnshareEvent{EventHeader: hdr, UnshareFlags: binary.LittleEndian.Uint64(body[:8])}, nil
+	case EventPtrace:
+		if len(body) < 12 {
+			return nil, fmt.Errorf("ptrace: short body")
+		}
+		req := int64(binary.LittleEndian.Uint64(body[:8]))
+		tgt := binary.LittleEndian.Uint32(body[8:12])
+		return &PtraceEvent{EventHeader: hdr, Request: req, TargetPID: tgt}, nil
+	case EventModuleLoad:
+		return &ModuleLoadEvent{EventHeader: hdr, Name: cstring(body)}, nil
+	case EventBPFLoad:
+		if len(body) < 4 {
+			return nil, fmt.Errorf("bpf: short body")
+		}
+		return &BPFLoadEvent{EventHeader: hdr, ProgType: binary.LittleEndian.Uint32(body[:4])}, nil
+	case EventMemfd:
+		if len(body) < 4 {
+			return nil, fmt.Errorf("memfd: short body")
+		}
+		flags := binary.LittleEndian.Uint32(body[:4])
+		return &MemfdEvent{EventHeader: hdr, Flags: flags, Name: cstring(body[4:])}, nil
+	case EventChmod:
+		if len(body) < 4 {
+			return nil, fmt.Errorf("chmod: short body")
+		}
+		mode := binary.LittleEndian.Uint32(body[:4])
+		return &ChmodEvent{EventHeader: hdr, Mode: mode, Path: cstring(body[4:])}, nil
+	case EventMmapExec:
+		if len(body) < 20 {
+			return nil, fmt.Errorf("mmap: short body")
+		}
+		return &MmapExecEvent{
+			EventHeader: hdr,
+			Addr:        binary.LittleEndian.Uint64(body[0:8]),
+			Len:         binary.LittleEndian.Uint64(body[8:16]),
+			Prot:        binary.LittleEndian.Uint32(body[16:20]),
+		}, nil
+	case EventProcProbe:
+		if len(body) < 4 {
+			return nil, fmt.Errorf("proc_probe: short body")
+		}
+		return &ProcProbeEvent{EventHeader: hdr, TargetPID: binary.LittleEndian.Uint32(body[:4])}, nil
+	default:
+		return nil, fmt.Errorf("unknown event type: %d", hdr.Type)
+	}
+}
+
+func cstring(b []byte) string {
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		return string(b[:i])
+	}
+	return string(b)
+}
+
+func splitNul(b []byte) [][]byte {
+	if len(b) == 0 {
+		return nil
+	}
+	parts := bytes.Split(b, []byte{0})
+	// Drop trailing empty from terminating \0
+	if len(parts) > 0 && len(parts[len(parts)-1]) == 0 {
+		parts = parts[:len(parts)-1]
+	}
+	return parts
+}
