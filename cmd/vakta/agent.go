@@ -10,10 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	"net/http"
+
 	"github.com/spf13/cobra"
 
 	"github.com/vakta-project/vakta/config"
 	"github.com/vakta-project/vakta/internal/alertmanager"
+	"github.com/vakta-project/vakta/internal/api"
 	"github.com/vakta-project/vakta/internal/engine"
 	"github.com/vakta-project/vakta/internal/k8saudit"
 	"github.com/vakta-project/vakta/internal/loki"
@@ -127,7 +130,21 @@ func runAgent(parent context.Context, cfg *config.Config) error {
 	}
 	defer pb.Close()
 
-	// 7) Prune ticker
+	// 7) API server + SSE bus
+	bus := api.NewEventBus()
+	apiSrv := api.New(cfg.UI.Addr, store, eng, bus, pb, api.ServerOptions{
+		Auth: cfg.UI.Auth, Username: cfg.UI.Username, Password: cfg.UI.Password,
+	})
+	if cfg.UI.Enabled {
+		go func() {
+			if err := apiSrv.Start(); err != nil && err != http.ErrServerClosed {
+				slog.Error("api: server", "err", err)
+			}
+		}()
+		defer func() { _ = apiSrv.Close() }()
+	}
+
+	// 8) Prune ticker
 	pruneT := time.NewTicker(1 * time.Hour)
 	defer pruneT.Stop()
 	go func() {
@@ -154,7 +171,7 @@ func runAgent(parent context.Context, cfg *config.Config) error {
 			if !ok {
 				return errors.New("normalizer channel closed unexpectedly")
 			}
-			handleEvent(ctx, ev, store, eng, am, lokiC, pb)
+			handleEvent(ctx, ev, store, eng, am, lokiC, pb, bus)
 		}
 	}
 }
@@ -163,7 +180,11 @@ func handleEvent(
 	ctx context.Context, ev normalizer.Event,
 	store *storage.DB, eng *engine.Engine,
 	am *alertmanager.Client, lokiC *loki.Client, pb *playbook.Engine,
+	bus *api.EventBus,
 ) {
+	if bus != nil {
+		bus.Publish(ev)
+	}
 	if lokiC != nil {
 		lokiC.Push(ev)
 	}
