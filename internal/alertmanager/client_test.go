@@ -62,18 +62,32 @@ func TestSendPostsAlerts(t *testing.T) {
 }
 
 func TestResolveSetsEndsAt(t *testing.T) {
-	var gotBody []byte
+	var (
+		mu      sync.Mutex
+		gotBody []byte
+	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotBody, _ = io.ReadAll(r.Body)
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		gotBody = b
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 	c := New(srv.URL, time.Second)
 	c.Resolve(context.Background(), map[string]string{"alertname": "Y"})
 	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) && gotBody == nil {
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		ok := gotBody != nil
+		mu.Unlock()
+		if ok {
+			break
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	if gotBody == nil {
 		t.Fatal("no request received")
 	}
