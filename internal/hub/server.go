@@ -87,9 +87,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("hub: from-wire", "err", err, "detail_type", we.DetailType)
 			continue
 		}
-		// Block up to 100ms so a mid-flush dispatcher doesn't trigger drops
-		// during normal load; only truly overloaded hubs lose events.
-		blockCtx, blockCancel := context.WithTimeout(r.Context(), 100*time.Millisecond)
+		// Block up to 250ms so a mid-flush dispatcher (50ms ticker + a few
+		// hundred ms of write/eval) doesn't trigger drops under normal burst.
+		// Only truly overloaded hubs lose events. Agent forwarder POST timeout
+		// is 5s (config-default), so 250ms cushion never approaches that.
+		blockCtx, blockCancel := context.WithTimeout(r.Context(), 250*time.Millisecond)
 		select {
 		case s.out <- ev:
 			accepted++

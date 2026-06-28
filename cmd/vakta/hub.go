@@ -25,7 +25,7 @@ import (
 const (
 	hubEventChannelBuffer = 65536           // absorbs agent burst when dispatcher is mid-flush
 	hubBatchSize          = 100             // flush threshold by count
-	hubBatchInterval      = 100 * time.Millisecond
+	hubBatchInterval      = 50 * time.Millisecond
 )
 
 func newHubCmd() *cobra.Command {
