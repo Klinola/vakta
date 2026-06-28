@@ -23,7 +23,7 @@ type Normalizer struct {
 // auditCh / k8sCh may be nil to disable that source.
 func New(
 	ebpfCh <-chan probe.Event,
-	auditCh <-chan []AuditdRecordView,
+	auditCh <-chan []AuditdRecord,
 	k8sCh <-chan K8sEntryView,
 	host string,
 ) *Normalizer {
@@ -83,7 +83,7 @@ func (n *Normalizer) runProbe(ch <-chan probe.Event) {
 	}
 }
 
-func (n *Normalizer) runAuditd(ch <-chan []AuditdRecordView) {
+func (n *Normalizer) runAuditd(ch <-chan []AuditdRecord) {
 	defer n.wg.Done()
 	for {
 		select {

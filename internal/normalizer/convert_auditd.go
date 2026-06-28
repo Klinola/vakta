@@ -1,22 +1,14 @@
 package normalizer
 
-import "time"
+import (
+	"github.com/vakta-project/vakta/internal/auditd"
+)
 
-// AuditdRecordView is the minimal shape from internal/auditd needed by the
-// normalizer. The real type lives in internal/auditd (Task 6) but we mirror it
-// here so this package compiles standalone. The concrete auditd.Record has
-// these same fields plus more; only this subset is consumed.
-type AuditdRecordView struct {
-	Seq       uint32
-	Timestamp time.Time
-	Type      string // "SYSCALL" | "PATH" | "EXECVE" | etc.
-	Fields    map[string]string
-}
+// AuditdRecord is re-exported here for the normalizer's input signature.
+type AuditdRecord = auditd.Record
 
-// FromAuditd converts a buffered SYSCALL+PATH multi-record into a single Event.
-// records must share Seq; the SYSCALL record carries pid/uid/comm, PATH carries
-// the file path.
-func FromAuditd(records []AuditdRecordView, host string) Event {
+// FromAuditd converts a buffered SYSCALL+PATH multi-record into one Event.
+func FromAuditd(records []AuditdRecord, host string) Event {
 	if len(records) == 0 {
 		return Event{}
 	}
