@@ -3,6 +3,7 @@
 package probe
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,22 @@ import (
 	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
 )
+
+// isPermissionDenied detects EACCES / EPERM in error chains, with a string
+// fallback for libraries that flatten the chain via fmt.Errorf("%v", err).
+// cilium/ebpf v0.22 wraps BPF_LINK_CREATE failures with %v in
+// link/perf_event.go:326, which breaks errors.Is — hence the string check.
+func isPermissionDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, unix.EACCES) || errors.Is(err, unix.EPERM) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "permission denied") ||
+		strings.Contains(msg, "operation not permitted")
+}
 
 // attachTracepointLegacy attaches a BPF program to a kernel tracepoint via
 // the pre-5.15 perf_event_open + PERF_EVENT_IOC_SET_BPF path. Used as a

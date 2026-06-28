@@ -14,7 +14,6 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
-	"golang.org/x/sys/unix"
 )
 
 // Stats is a snapshot of probe runtime metrics. Returned by Manager.Stats().
@@ -92,7 +91,7 @@ func New(ctx context.Context) (*Manager, <-chan Event, error) {
 		switch s.kind {
 		case attachTracepoint:
 			l, err = link.Tracepoint(s.group, s.name, s.prog, nil)
-			if err != nil && (errors.Is(err, unix.EACCES) || errors.Is(err, unix.EPERM)) {
+			if err != nil && isPermissionDenied(err) {
 				// Runtime fallback for kernels (e.g. RHEL/Rocky 9 with active
 				// bpf LSM) where the cilium/ebpf feature probe reports
 				// BPF_LINK_CREATE as supported but actual attach is rejected.
