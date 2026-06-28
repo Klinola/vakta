@@ -87,6 +87,90 @@ func TestInsertAndQueryActionRun(t *testing.T) {
 	}
 }
 
+func TestInsertEventsBatch_RoundTrip(t *testing.T) {
+	db := newDB(t)
+	ctx := context.Background()
+
+	const n = 50
+	events := make([]normalizer.Event, n)
+	base := time.Now()
+	for i := range events {
+		events[i] = normalizer.Event{
+			Ts:     base.Add(time.Duration(i) * time.Millisecond),
+			Source: normalizer.SourceEBPF,
+			Type:   "EXEC",
+			Host:   "h1",
+			PID:    uint32(1000 + i),
+			Comm:   "bash",
+			Detail: &normalizer.ExecDetail{Filename: "/bin/ls"},
+		}
+	}
+
+	ids, err := db.InsertEventsBatch(ctx, events)
+	if err != nil {
+		t.Fatalf("InsertEventsBatch: %v", err)
+	}
+	if len(ids) != n {
+		t.Fatalf("len(ids)=%d want %d", len(ids), n)
+	}
+	for i := 1; i < n; i++ {
+		if ids[i] <= ids[i-1] {
+			t.Fatalf("ids not monotonically increasing: %v", ids)
+		}
+	}
+
+	got, err := db.QueryEvents(ctx, EventFilter{})
+	if err != nil {
+		t.Fatalf("QueryEvents: %v", err)
+	}
+	if len(got) != n {
+		t.Fatalf("len(got)=%d want %d", len(got), n)
+	}
+}
+
+func TestInsertEventsBatch_Empty(t *testing.T) {
+	db := newDB(t)
+	ids, err := db.InsertEventsBatch(context.Background(), nil)
+	if err != nil || ids != nil {
+		t.Fatalf("empty batch should be no-op, got ids=%v err=%v", ids, err)
+	}
+}
+
+func TestInsertAlertsBatch_RoundTrip(t *testing.T) {
+	db := newDB(t)
+	ctx := context.Background()
+
+	const n = 10
+	alerts := make([]Alert, n)
+	for i := range alerts {
+		alerts[i] = Alert{
+			RuleID:   "rule-x",
+			RuleName: "Test rule",
+			Severity: "P1",
+			EventID:  int64(i + 1),
+			Status:   "firing",
+			Tags:     []string{"test"},
+			FiredAt:  time.Now(),
+		}
+	}
+
+	ids, err := db.InsertAlertsBatch(ctx, alerts)
+	if err != nil {
+		t.Fatalf("InsertAlertsBatch: %v", err)
+	}
+	if len(ids) != n {
+		t.Fatalf("len(ids)=%d want %d", len(ids), n)
+	}
+
+	got, err := db.QueryAlerts(ctx, AlertFilter{})
+	if err != nil {
+		t.Fatalf("QueryAlerts: %v", err)
+	}
+	if len(got) != n {
+		t.Fatalf("len(got)=%d want %d", len(got), n)
+	}
+}
+
 func TestPruneOldEvents(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "p.db"), 1) // 1 day retention
 	if err != nil {

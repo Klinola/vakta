@@ -120,6 +120,58 @@ func (db *DB) InsertEvent(ctx context.Context, ev normalizer.Event) (int64, erro
 	return res.LastInsertId()
 }
 
+// InsertEventsBatch stores a slice of events in a single transaction and
+// returns row ids in the same order as input. On any error the transaction
+// rolls back and (nil, err) is returned — nothing is persisted.
+//
+// A single transaction amortizes WAL fsync cost across many inserts; with
+// SetMaxOpenConns(1) the DB driver already serializes writers, so wrapping
+// in BEGIN ... COMMIT is the cheapest path to higher throughput.
+func (db *DB) InsertEventsBatch(ctx context.Context, events []normalizer.Event) ([]int64, error) {
+	if len(events) == 0 {
+		return nil, nil
+	}
+	tx, err := db.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO events
+		  (ts, host, source, type, cgroup_id, pid, ppid, uid, comm, ret, detail_json, created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		return nil, fmt.Errorf("prepare events: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	now := time.Now().UnixNano()
+	ids := make([]int64, len(events))
+	for i, ev := range events {
+		detail, err := json.Marshal(ev.Detail)
+		if err != nil {
+			return nil, fmt.Errorf("marshal detail[%d]: %w", i, err)
+		}
+		res, err := stmt.ExecContext(ctx,
+			ev.Ts.UnixNano(), ev.Host, int(ev.Source), ev.Type,
+			ev.CgroupID, ev.PID, ev.PPID, ev.UID, ev.Comm,
+			ev.Ret, string(detail), now)
+		if err != nil {
+			return nil, fmt.Errorf("insert event[%d]: %w", i, err)
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			return nil, fmt.Errorf("lastid[%d]: %w", i, err)
+		}
+		ids[i] = id
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return ids, nil
+}
+
 // InsertAlert stores an alert and returns its row id.
 func (db *DB) InsertAlert(ctx context.Context, a Alert) (int64, error) {
 	tagsJSON, err := json.Marshal(a.Tags)
@@ -137,6 +189,52 @@ func (db *DB) InsertAlert(ctx context.Context, a Alert) (int64, error) {
 		return 0, err
 	}
 	return res.LastInsertId()
+}
+
+// InsertAlertsBatch stores a slice of alerts in a single transaction and
+// returns row ids in the same order. See InsertEventsBatch rationale.
+func (db *DB) InsertAlertsBatch(ctx context.Context, alerts []Alert) ([]int64, error) {
+	if len(alerts) == 0 {
+		return nil, nil
+	}
+	tx, err := db.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO alerts
+		  (rule_id, rule_name, severity, event_id, action_id, status, tags_json, fired_at)
+		VALUES (?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		return nil, fmt.Errorf("prepare alerts: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	ids := make([]int64, len(alerts))
+	for i, a := range alerts {
+		tagsJSON, err := json.Marshal(a.Tags)
+		if err != nil {
+			return nil, fmt.Errorf("marshal tags[%d]: %w", i, err)
+		}
+		res, err := stmt.ExecContext(ctx,
+			a.RuleID, a.RuleName, a.Severity,
+			nullInt64(a.EventID), nullString(a.ActionID),
+			a.Status, string(tagsJSON), a.FiredAt.UnixNano())
+		if err != nil {
+			return nil, fmt.Errorf("insert alert[%d]: %w", i, err)
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			return nil, fmt.Errorf("lastid[%d]: %w", i, err)
+		}
+		ids[i] = id
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return ids, nil
 }
 
 // QueryEvents returns up to 500 events matching the filter, newest first.

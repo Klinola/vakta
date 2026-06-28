@@ -87,12 +87,16 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("hub: from-wire", "err", err, "detail_type", we.DetailType)
 			continue
 		}
+		// Block up to 100ms so a mid-flush dispatcher doesn't trigger drops
+		// during normal load; only truly overloaded hubs lose events.
+		blockCtx, blockCancel := context.WithTimeout(r.Context(), 100*time.Millisecond)
 		select {
 		case s.out <- ev:
 			accepted++
-		default:
+		case <-blockCtx.Done():
 			dropped++
 		}
+		blockCancel()
 	}
 	if dropped > 0 {
 		slog.Warn("hub: ingest channel full, dropped events", "dropped", dropped, "accepted", accepted)
