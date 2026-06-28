@@ -159,10 +159,18 @@ func parseRecord(raw []byte) (Event, error) {
 	if len(raw) < headerSize {
 		return nil, fmt.Errorf("short record: %d bytes", len(raw))
 	}
-	var hdr EventHeader
-	if err := binary.Read(bytes.NewReader(raw[:headerSize]), binary.LittleEndian, &hdr); err != nil {
-		return nil, fmt.Errorf("decode header: %w", err)
+	le := binary.LittleEndian
+	hdr := EventHeader{
+		TsNs:     le.Uint64(raw[0:8]),
+		CgroupID: le.Uint64(raw[8:16]),
+		PID:      le.Uint32(raw[16:20]),
+		PPID:     le.Uint32(raw[20:24]),
+		UID:      le.Uint32(raw[24:28]),
+		GID:      le.Uint32(raw[28:32]),
+		Type:     EventType(le.Uint32(raw[32:36])),
 	}
+	copy(hdr.Comm[:], raw[36:52])
+	// raw[52:56] is the trailing pad — skipped
 	body := raw[headerSize:]
 	switch hdr.Type {
 	case EventExecAttempt:

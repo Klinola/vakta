@@ -165,3 +165,11 @@ func TestManagerCloseUnblocksStuckSend(t *testing.T) {
 		t.Fatal("readLoop send did not release on quit")
 	}
 }
+
+func BenchmarkParseRecord_ExecAttempt(b *testing.B) {
+	rec := append(buildHeader(EventExecAttempt), append([]byte("/bin/ls"), 0)...)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = parseRecord(rec)
+	}
+}
