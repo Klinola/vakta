@@ -215,9 +215,7 @@ func handleEvent(
 			StartsAt: m.At,
 		}})
 		if m.Rule.ActionID != "" {
-			run, err := pb.Run(ctx, m.Rule.ActionID, m)
-			run.AlertID = alertID
-			if err != nil {
+			if _, err := pb.Run(ctx, m.Rule.ActionID, alertID, m); err != nil {
 				slog.Warn("playbook run", "action", m.Rule.ActionID, "err", err)
 			}
 		}

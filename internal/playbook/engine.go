@@ -77,9 +77,11 @@ func New(actionDirs []string, store *storage.DB, am *alertmanager.Client, opts E
 
 func (e *Engine) Close() {} // reserved for future resources
 
-// Run executes the action with the given ID. Errors only when the action is
-// unknown; per-step failures are recorded in the returned ActionRun.
-func (e *Engine) Run(ctx context.Context, actionID string, m engine.Match) (ActionRun, error) {
+// Run executes the action with the given ID, linking the action run to the
+// alert that fired it (use 0 if no alert applies, e.g. manual invocation).
+// Errors only when the action is unknown; per-step failures are recorded in
+// the returned ActionRun.
+func (e *Engine) Run(ctx context.Context, actionID string, alertID int64, m engine.Match) (ActionRun, error) {
 	e.mu.RLock()
 	a, ok := e.actions[actionID]
 	e.mu.RUnlock()
@@ -90,6 +92,7 @@ func (e *Engine) Run(ctx context.Context, actionID string, m engine.Match) (Acti
 	dry := a.DryRun || e.opts.DryRunGlobal
 	run := ActionRun{
 		ActionID:  actionID,
+		AlertID:   alertID,
 		DryRun:    dry,
 		StartedAt: time.Now(),
 		Status:    "completed",

@@ -1,15 +1,23 @@
 package engine
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/google/cel-go/cel"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/vakta-project/vakta/internal/normalizer"
 )
+
+//go:embed builtin_rules/*.yaml
+var builtinRulesFS embed.FS
 
 // Match is produced when a rule's condition evaluates true for an Event.
 type Match struct {
@@ -42,10 +50,23 @@ func New(ruleDirs []string) (*Engine, error) {
 	return e, nil
 }
 
-// load reads all rule files, compiles, and atomically swaps the rule set.
+// load reads built-in rules (embedded) then user dirs (overrides by id),
+// compiles, and atomically swaps the rule set.
 func (e *Engine) load() error {
 	seen := map[string]int{}
 	var all []Rule
+
+	// 1) Built-in rules embedded in the binary.
+	builtins, err := loadBuiltinRules()
+	if err != nil {
+		return fmt.Errorf("load builtin rules: %w", err)
+	}
+	for _, r := range builtins {
+		seen[r.ID] = len(all)
+		all = append(all, r)
+	}
+
+	// 2) User rules from disk; same-id user rules override built-in.
 	for _, dir := range e.ruleDirs {
 		rs, err := loadRulesFromDir(dir)
 		if err != nil {
@@ -53,7 +74,7 @@ func (e *Engine) load() error {
 		}
 		for _, r := range rs {
 			if idx, ok := seen[r.ID]; ok {
-				all[idx] = r // later dir overrides earlier
+				all[idx] = r
 				continue
 			}
 			seen[r.ID] = len(all)
@@ -124,6 +145,33 @@ func (e *Engine) Evaluate(ev normalizer.Event) []Match {
 		return matches[i].Rule.ID < matches[j].Rule.ID
 	})
 	return matches
+}
+
+// loadBuiltinRules parses every yaml under the embedded builtin_rules dir.
+func loadBuiltinRules() ([]Rule, error) {
+	var out []Rule
+	err := fs.WalkDir(builtinRulesFS, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if ext := filepath.Ext(p); ext != ".yaml" && ext != ".yml" {
+			return nil
+		}
+		b, err := builtinRulesFS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		var rf ruleFile
+		if err := yaml.Unmarshal(b, &rf); err != nil {
+			return fmt.Errorf("%s: %w", p, err)
+		}
+		out = append(out, rf.Rules...)
+		return nil
+	})
+	return out, err
 }
 
 func sourceMatches(want string, got normalizer.Source) bool {

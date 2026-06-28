@@ -105,8 +105,8 @@ rules:
     condition: "true"
 `)
 	e, _ := New([]string{dir})
-	if len(e.Rules()) != 1 {
-		t.Fatal()
+	if !hasRule(e.Rules(), "r1") || hasRule(e.Rules(), "r2") {
+		t.Fatalf("expected r1 only (plus built-ins); got %v", ruleIDs(e.Rules()))
 	}
 	writeRule(t, dir, "v1.yaml", `
 rules:
@@ -122,8 +122,40 @@ rules:
 	if err := e.Reload(); err != nil {
 		t.Fatal(err)
 	}
-	if len(e.Rules()) != 2 {
-		t.Fatalf("after reload got %d rules", len(e.Rules()))
+	if !hasRule(e.Rules(), "r1") || !hasRule(e.Rules(), "r2") {
+		t.Fatalf("after reload expected r1+r2; got %v", ruleIDs(e.Rules()))
+	}
+}
+
+func hasRule(rs []Rule, id string) bool {
+	for _, r := range rs {
+		if r.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func ruleIDs(rs []Rule) []string {
+	out := make([]string, len(rs))
+	for i, r := range rs {
+		out[i] = r.ID
+	}
+	return out
+}
+
+func TestEngineLoadsBuiltinRules(t *testing.T) {
+	e, err := New(nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	rules := e.Rules()
+	if len(rules) == 0 {
+		t.Fatal("expected at least one built-in rule")
+	}
+	// At least the two we shipped should be present.
+	if !hasRule(rules, "connect-to-known-c2-port") || !hasRule(rules, "suid-bit-set") {
+		t.Fatalf("missing built-in rules; got %v", ruleIDs(rules))
 	}
 }
 

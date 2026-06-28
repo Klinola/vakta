@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vakta-rules
+  labels:
+    app.kubernetes.io/name: vakta
+data:
+{{- if .Values.rules }}
+{{- range $name, $body := .Values.rules }}
+  {{ $name }}: |
+{{ $body | indent 4 }}
+{{- end }}
+{{- else }}
+  # Built-in rules are embedded in the agent binary; this ConfigMap is intentionally
+  # empty unless you supply user rules via the .Values.rules map. Example:
+  #   rules:
+  #     my-rules.yaml: |
+  #       rules:
+  #         - id: my-rule
+  #           name: My Rule
+  #           severity: high
+  #           condition: event.uid == 0
+  .keep: ""
+{{- end }}

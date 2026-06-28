@@ -68,7 +68,7 @@ func makeMatch(actionID string) engine.Match {
 func TestRunNotify(t *testing.T) {
 	e, _ := setup(t)
 	defer e.Close()
-	run, err := e.Run(context.Background(), "notify-only", makeMatch("notify-only"))
+	run, err := e.Run(context.Background(), "notify-only", 0, makeMatch("notify-only"))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestRunNotify(t *testing.T) {
 func TestRunSkipsStepByCondition(t *testing.T) {
 	e, _ := setup(t)
 	defer e.Close()
-	run, _ := e.Run(context.Background(), "skip-step", makeMatch("skip-step"))
+	run, _ := e.Run(context.Background(), "skip-step", 0, makeMatch("skip-step"))
 	if !run.Steps[0].Skipped {
 		t.Fatalf("step should be skipped; run=%+v", run)
 	}
@@ -92,7 +92,7 @@ func TestRunSkipsStepByCondition(t *testing.T) {
 func TestRunDryRunMarksSteps(t *testing.T) {
 	e, _ := setup(t)
 	defer e.Close()
-	run, _ := e.Run(context.Background(), "with-dry-run", makeMatch("with-dry-run"))
+	run, _ := e.Run(context.Background(), "with-dry-run", 0, makeMatch("with-dry-run"))
 	if !run.DryRun || run.Status != "completed" {
 		t.Fatalf("run=%+v", run)
 	}
@@ -116,7 +116,7 @@ actions:
 		t.Fatalf("New: %v", err)
 	}
 	defer e.Close()
-	run, _ := e.Run(context.Background(), "shell", makeMatch("shell"))
+	run, _ := e.Run(context.Background(), "shell", 0, makeMatch("shell"))
 	if run.Status != "failed" {
 		t.Fatalf("exec.run should be blocked; got %+v", run)
 	}
@@ -125,8 +125,31 @@ actions:
 func TestUnknownActionReturnsError(t *testing.T) {
 	e, _ := setup(t)
 	defer e.Close()
-	_, err := e.Run(context.Background(), "nope", makeMatch("nope"))
+	_, err := e.Run(context.Background(), "nope", 0, makeMatch("nope"))
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestRunPersistsAlertIDToActionRuns(t *testing.T) {
+	e, db := setup(t)
+	defer e.Close()
+	const alertID int64 = 4242
+	run, err := e.Run(context.Background(), "notify-only", alertID, makeMatch("notify-only"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if run.AlertID != alertID {
+		t.Fatalf("run.AlertID = %d, want %d", run.AlertID, alertID)
+	}
+	runs, err := db.QueryActionRuns(context.Background(), storage.ActionRunFilter{})
+	if err != nil {
+		t.Fatalf("QueryActionRuns: %v", err)
+	}
+	if len(runs) == 0 {
+		t.Fatal("no action_runs row persisted")
+	}
+	if !runs[0].AlertID.Valid || runs[0].AlertID.Int64 != alertID {
+		t.Fatalf("action_runs.alert_id = %+v, want valid=%d", runs[0].AlertID, alertID)
 	}
 }

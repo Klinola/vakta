@@ -43,7 +43,14 @@ spec:
             - name: state
               mountPath: /var/lib/vakta
             - name: config
-              mountPath: /etc/vakta
+              mountPath: /etc/vakta/config.yaml
+              subPath: config.yaml
+            - name: rules
+              mountPath: /etc/vakta/rules
+              readOnly: true
+            - name: actions
+              mountPath: /etc/vakta/actions
+              readOnly: true
       volumes:
         - name: bpf
           hostPath: { path: /sys/fs/bpf }
@@ -56,3 +63,9 @@ spec:
         - name: config
           configMap:
             name: vakta-config
+        - name: rules
+          configMap:
+            name: vakta-rules
+        - name: actions
+          configMap:
+            name: vakta-actions

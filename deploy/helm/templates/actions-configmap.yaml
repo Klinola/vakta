@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vakta-actions
+  labels:
+    app.kubernetes.io/name: vakta
+data:
+{{- if .Values.actions }}
+{{- range $name, $body := .Values.actions }}
+  {{ $name }}: |
+{{ $body | indent 4 }}
+{{- end }}
+{{- else }}
+  # Action playbooks are user-defined. Provide via .Values.actions map. Example:
+  #   actions:
+  #     notify.yaml: |
+  #       actions:
+  #         - id: notify-only
+  #           name: Just notify
+  #           steps:
+  #             - id: s1
+  #               action: notify
+  #               params:
+  #                 severity: high
+  #                 message: "{{ "{{" }} .event.comm {{ "}}" }} did a thing"
+  .keep: ""
+{{- end }}

@@ -1,7 +1,30 @@
 image:
   repository: ghcr.io/vakta-project/vakta
-  tag: latest
+  tag: "0.3.0"      # pin; do not use 'latest' in production
   pullPolicy: IfNotPresent
+
+# User-supplied rules: each map entry becomes a file under /etc/vakta/rules/<key>.
+# Built-in rules are always embedded in the binary; these are additive (user
+# rules with the same id override built-in).
+rules: {}
+#  example.yaml: |
+#    rules:
+#      - id: exec-as-root
+#        name: Exec as root
+#        severity: high
+#        event_type: EXEC
+#        condition: event.uid == 0
+
+# User-supplied action playbooks: each map entry → /etc/vakta/actions/<key>.
+actions: {}
+#  notify.yaml: |
+#    actions:
+#      - id: notify-only
+#        name: Just notify
+#        steps:
+#          - id: s1
+#            action: notify
+#            params: {severity: high, message: "alert"}
 
 mode: k8s
 nodeSelector: {}
