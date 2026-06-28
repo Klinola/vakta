@@ -17,6 +17,7 @@ import (
 	"github.com/vakta-project/vakta/config"
 	"github.com/vakta-project/vakta/internal/alertmanager"
 	"github.com/vakta-project/vakta/internal/api"
+	"github.com/vakta-project/vakta/internal/auditd"
 	"github.com/vakta-project/vakta/internal/engine"
 	"github.com/vakta-project/vakta/internal/k8saudit"
 	"github.com/vakta-project/vakta/internal/loki"
@@ -90,7 +91,19 @@ func runAgent(parent context.Context, cfg *config.Config) error {
 		}
 	}
 
-	// 3) Optional k8s audit log tailer
+	// 3) Optional auditd netlink reader + SYSCALL+PATH grouper
+	var auditCh <-chan []auditd.Record
+	if cfg.Sources.Auditd {
+		ar, err := auditd.New(ctx)
+		if err != nil {
+			slog.Warn("auditd disabled", "err", err)
+		} else {
+			defer func() { _ = ar.Close() }()
+			auditCh = auditd.Group(ctx, ar.Records())
+		}
+	}
+
+	// 4) Optional k8s audit log tailer
 	var k8sCh <-chan k8saudit.Entry
 	if cfg.Sources.K8sAudit && cfg.Agent.Mode == "k8s" {
 		tl, err := k8saudit.New(ctx, cfg.Sources.K8sAuditLog)
@@ -102,8 +115,8 @@ func runAgent(parent context.Context, cfg *config.Config) error {
 		}
 	}
 
-	// 4) Normalizer (auditd channel still nil — Task 6 reader exists but no wiring goroutine here yet)
-	n := normalizer.New(probeCh, nil, k8sCh, host)
+	// 5) Normalizer
+	n := normalizer.New(probeCh, auditCh, k8sCh, host)
 	defer n.Close()
 
 	// 4) Engine

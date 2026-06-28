@@ -10,9 +10,10 @@ import (
 	"github.com/vakta-project/vakta/internal/normalizer"
 )
 
-// newCELEnv builds the CEL environment with the variables vakta rules use:
-// event, detail, host. Detail is exposed as a map<string, dyn>.
-func newCELEnv() (*cel.Env, error) {
+// NewCELEnv builds the CEL environment with the variables vakta rules use:
+// event, detail, host. Detail is exposed as a map<string, dyn>. Exported so
+// the playbook engine reuses the same activation shape for step conditions.
+func NewCELEnv() (*cel.Env, error) {
 	return cel.NewEnv(
 		cel.Variable("event", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("detail", cel.MapType(cel.StringType, cel.DynType)),
@@ -20,8 +21,9 @@ func newCELEnv() (*cel.Env, error) {
 	)
 }
 
-// celCompile compiles a rule expression and returns a runnable program.
-func celCompile(env *cel.Env, expr string) (cel.Program, error) {
+// CELCompile compiles a CEL expression against env and returns a runnable program.
+// Exported for the playbook engine to pre-compile step conditions at action load.
+func CELCompile(env *cel.Env, expr string) (cel.Program, error) {
 	ast, iss := env.Compile(expr)
 	if iss != nil && iss.Err() != nil {
 		return nil, fmt.Errorf("CEL compile: %w", iss.Err())
@@ -31,6 +33,13 @@ func celCompile(env *cel.Env, expr string) (cel.Program, error) {
 		return nil, fmt.Errorf("CEL program: %w", err)
 	}
 	return prg, nil
+}
+
+// ActivationFor builds the {event, detail, host} map a CEL program receives.
+// Exported so the playbook engine evaluates step conditions against the same
+// schema rules use.
+func ActivationFor(ev normalizer.Event) map[string]any {
+	return activationFor(ev)
 }
 
 // activationFor builds the {event, detail, host} map for evaluation.

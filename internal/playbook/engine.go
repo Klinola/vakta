@@ -41,22 +41,24 @@ type StepResult struct {
 
 // Engine loads action definitions and dispatches Run requests.
 type Engine struct {
-	mu       sync.RWMutex
-	actions  map[string]Action
-	store    *storage.DB
-	celEnv   *cel.Env
-	handlers *handlerCtx
-	opts     EngineOptions
+	mu        sync.RWMutex
+	actions   map[string]Action
+	store     *storage.DB
+	celEnv    *cel.Env
+	stepConds map[string]cel.Program // key = "actionID:stepID"; nil if no condition
+	handlers  *handlerCtx
+	opts      EngineOptions
 }
 
 func New(actionDirs []string, store *storage.DB, am *alertmanager.Client, opts EngineOptions) (*Engine, error) {
-	env, err := cel.NewEnv(
-		cel.Variable("event", cel.MapType(cel.StringType, cel.DynType)),
-	)
+	// Reuse the rule engine's CEL environment so step conditions see the
+	// same {event, detail, host} schema rules do.
+	env, err := engine.NewCELEnv()
 	if err != nil {
 		return nil, fmt.Errorf("cel env: %w", err)
 	}
 	actions := map[string]Action{}
+	stepConds := map[string]cel.Program{}
 	for _, dir := range actionDirs {
 		as, err := loadActionsFromDir(dir)
 		if err != nil {
@@ -64,14 +66,25 @@ func New(actionDirs []string, store *storage.DB, am *alertmanager.Client, opts E
 		}
 		for _, a := range as {
 			actions[a.ID] = a
+			for _, s := range a.Steps {
+				if s.Condition == "" {
+					continue
+				}
+				prg, err := engine.CELCompile(env, s.Condition)
+				if err != nil {
+					return nil, fmt.Errorf("action %s step %s: %w", a.ID, s.ID, err)
+				}
+				stepConds[a.ID+":"+s.ID] = prg
+			}
 		}
 	}
 	return &Engine{
-		actions:  actions,
-		store:    store,
-		celEnv:   env,
-		handlers: &handlerCtx{am: am, allowExecRun: opts.AllowExecRun},
-		opts:     opts,
+		actions:   actions,
+		store:     store,
+		celEnv:    env,
+		stepConds: stepConds,
+		handlers:  &handlerCtx{am: am, allowExecRun: opts.AllowExecRun},
+		opts:      opts,
 	}, nil
 }
 
@@ -100,7 +113,7 @@ func (e *Engine) Run(ctx context.Context, actionID string, alertID int64, m engi
 	for _, s := range a.Steps {
 		sr := StepResult{ID: s.ID}
 		if s.Condition != "" {
-			pass, err := e.evalCondition(s.Condition, m)
+			pass, err := e.evalCondition(actionID, s.ID, m)
 			if err != nil {
 				sr.Err = err.Error()
 				run.Status = "failed"
@@ -157,21 +170,13 @@ func (e *Engine) Actions() []Action {
 	return out
 }
 
-func (e *Engine) evalCondition(expr string, m engine.Match) (bool, error) {
-	ast, iss := e.celEnv.Compile(expr)
-	if iss != nil && iss.Err() != nil {
-		return false, iss.Err()
+func (e *Engine) evalCondition(actionID, stepID string, m engine.Match) (bool, error) {
+	prg, ok := e.stepConds[actionID+":"+stepID]
+	if !ok {
+		// no condition set → treat as always-pass; caller shouldn't have called us
+		return true, nil
 	}
-	prg, err := e.celEnv.Program(ast)
-	if err != nil {
-		return false, err
-	}
-	act := map[string]any{
-		"event": map[string]any{
-			"type": m.Event.Type, "pid": int(m.Event.PID), "uid": int(m.Event.UID),
-			"comm": m.Event.Comm, "ret": m.Event.Ret,
-		},
-	}
+	act := engine.ActivationFor(m.Event)
 	out, _, err := prg.Eval(act)
 	if err != nil {
 		return false, err

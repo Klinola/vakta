@@ -43,6 +43,16 @@ func (s *Server) handleGetEvents(w http.ResponseWriter, r *http.Request) {
 			f.Until = &t
 		}
 	}
+	if v := q.Get("cursor"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			f.Cursor = &n
+		}
+	}
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			f.Limit = n
+		}
+	}
 	evs, err := s.db.QueryEvents(r.Context(), f)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
@@ -66,6 +76,16 @@ func (s *Server) handleGetAlerts(w http.ResponseWriter, r *http.Request) {
 	if v := q.Get("since"); v != "" {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {
 			f.Since = &t
+		}
+	}
+	if v := q.Get("cursor"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			f.Cursor = &n
+		}
+	}
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			f.Limit = n
 		}
 	}
 	as, err := s.db.QueryAlerts(r.Context(), f)
@@ -132,8 +152,17 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 	stats := map[string]any{
 		"rules": len(s.eng.Rules()),
 	}
-	if evs, err := s.db.QueryEvents(ctx, storage.EventFilter{}); err == nil {
-		stats["recent_events"] = len(evs)
+	if n, err := s.db.CountEvents(ctx); err == nil {
+		stats["events_total"] = n
+	}
+	if n, err := s.db.CountAlerts(ctx); err == nil {
+		stats["alerts_total"] = n
+	}
+	if n, err := s.db.CountActionRuns(ctx); err == nil {
+		stats["action_runs_total"] = n
+	}
+	if s.pb != nil {
+		stats["actions"] = len(s.pb.Actions())
 	}
 	writeJSON(w, 200, stats)
 }

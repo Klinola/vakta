@@ -71,6 +71,8 @@ type EventFilter struct {
 	PID    *uint32
 	Since  *time.Time
 	Until  *time.Time
+	Cursor *int64 // pagination: return rows with id < Cursor
+	Limit  int    // 0 = default (500)
 }
 
 type AlertFilter struct {
@@ -78,6 +80,8 @@ type AlertFilter struct {
 	Severity *string
 	Status   *string
 	Since    *time.Time
+	Cursor   *int64 // pagination: return rows with id < Cursor
+	Limit    int    // 0 = default (200)
 }
 
 // Open initializes the SQLite database at path with the given retention window.
@@ -159,7 +163,15 @@ func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]StoredEvent, er
 		q += " AND ts <= ?"
 		args = append(args, f.Until.UnixNano())
 	}
-	q += " ORDER BY ts DESC LIMIT 500"
+	if f.Cursor != nil {
+		q += " AND id < ?"
+		args = append(args, *f.Cursor)
+	}
+	limit := f.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	q += fmt.Sprintf(" ORDER BY id DESC LIMIT %d", limit)
 
 	rows, err := db.conn.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -215,7 +227,15 @@ func (db *DB) QueryAlerts(ctx context.Context, f AlertFilter) ([]StoredAlert, er
 		q += " AND fired_at >= ?"
 		args = append(args, f.Since.UnixNano())
 	}
-	q += " ORDER BY fired_at DESC LIMIT 200"
+	if f.Cursor != nil {
+		q += " AND id < ?"
+		args = append(args, *f.Cursor)
+	}
+	limit := f.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 200
+	}
+	q += fmt.Sprintf(" ORDER BY id DESC LIMIT %d", limit)
 
 	rows, err := db.conn.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -317,8 +337,23 @@ func (db *DB) QueryActionRuns(ctx context.Context, f ActionRunFilter) ([]StoredA
 }
 
 // Prune deletes events older than retentionDays and resolved alerts older than retentionDays.
+// Before deleting events, NULLs any alerts.event_id / action_runs.alert_id references
+// to soon-to-be-deleted rows so the alerts/action_runs tables don't carry dangling FKs.
 func (db *DB) Prune(ctx context.Context) error {
 	cutoff := time.Now().Add(-time.Duration(db.retentionDays) * 24 * time.Hour).UnixNano()
+
+	// Null out alerts.event_id pointing at events about to be deleted.
+	if _, err := db.conn.ExecContext(ctx,
+		`UPDATE alerts SET event_id = NULL WHERE event_id IN (SELECT id FROM events WHERE ts < ?)`,
+		cutoff); err != nil {
+		return err
+	}
+	// Null out action_runs.alert_id pointing at alerts about to be deleted.
+	if _, err := db.conn.ExecContext(ctx,
+		`UPDATE action_runs SET alert_id = NULL WHERE alert_id IN (SELECT id FROM alerts WHERE status = 'resolved' AND resolved_at < ?)`,
+		cutoff); err != nil {
+		return err
+	}
 	if _, err := db.conn.ExecContext(ctx, `DELETE FROM events WHERE ts < ?`, cutoff); err != nil {
 		return err
 	}
@@ -331,6 +366,28 @@ func (db *DB) Prune(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// CountEvents returns the total event row count. Used by /api/v1/stats so the
+// API doesn't conflate "matched the LIMIT 500 page" with "actual count".
+func (db *DB) CountEvents(ctx context.Context) (int64, error) {
+	var n int64
+	err := db.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM events`).Scan(&n)
+	return n, err
+}
+
+// CountAlerts returns the total alert row count.
+func (db *DB) CountAlerts(ctx context.Context) (int64, error) {
+	var n int64
+	err := db.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM alerts`).Scan(&n)
+	return n, err
+}
+
+// CountActionRuns returns the total action_runs row count.
+func (db *DB) CountActionRuns(ctx context.Context) (int64, error) {
+	var n int64
+	err := db.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM action_runs`).Scan(&n)
+	return n, err
 }
 
 func nullInt64(v int64) sql.NullInt64 {
