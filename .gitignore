@@ -4,6 +4,7 @@ bin/
 vmlinux.h
 .vscode/
 .idea/
+dev/
 
 # vendored vmlinux.h is committed (regenerable via headers/update.sh)
 !internal/probe/bpf/headers/vmlinux.h
