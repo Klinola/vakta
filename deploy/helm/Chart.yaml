@@ -1,0 +1,6 @@
+apiVersion: v2
+name: vakta
+description: vakta runtime event-processing agent
+type: application
+version: 0.3.0
+appVersion: "0.3.0"

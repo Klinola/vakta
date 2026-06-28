@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vakta-ui
+  labels:
+    app.kubernetes.io/name: vakta
+spec:
+  type: {{ .Values.ui.service.type }}
+  ports:
+    - name: ui
+      port: {{ .Values.ui.service.port }}
+      targetPort: ui
+  selector:
+    app.kubernetes.io/name: vakta

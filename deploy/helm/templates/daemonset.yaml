@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vakta
+  labels:
+    app.kubernetes.io/name: vakta
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vakta
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vakta
+    spec:
+      serviceAccountName: vakta
+      hostPID: true
+      hostNetwork: true
+      tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
+      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["agent", "--config", "/etc/vakta/config.yaml", "--mode", "{{ .Values.mode }}"]
+          securityContext:
+            privileged: false
+            capabilities:
+              add: ["BPF", "PERFMON", "SYS_RESOURCE", "AUDIT_READ"]
+          ports:
+            - name: ui
+              containerPort: 9090
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: bpf
+              mountPath: /sys/fs/bpf
+            - name: kernel-btf
+              mountPath: /sys/kernel/btf
+              readOnly: true
+            - name: k8s-audit
+              mountPath: /var/log/k8s-audit.log
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/vakta
+            - name: config
+              mountPath: /etc/vakta
+      volumes:
+        - name: bpf
+          hostPath: { path: /sys/fs/bpf }
+        - name: kernel-btf
+          hostPath: { path: /sys/kernel/btf }
+        - name: k8s-audit
+          hostPath: { path: "{{ .Values.k8sAuditLogPath }}" }
+        - name: state
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: vakta-config
