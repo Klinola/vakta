@@ -4,9 +4,11 @@ rules:
     severity: critical
     source: k8s_audit
     event_type: K8S_AUDIT
+    # ArgoCD application-controller patches managed RBAC on every sync cycle — exclude it.
     condition: >
       detail.resource == "clusterrolebindings" &&
-      detail.verb in ["create", "update", "patch"]
+      detail.verb in ["create", "update", "patch"] &&
+      !detail.username.startsWith("system:serviceaccount:argocd:")
     tags: [privilege-escalation, persistence, T1078.001]
 
   - id: k8s-rolebinding-admin
@@ -27,5 +29,6 @@ rules:
     event_type: K8S_AUDIT
     condition: >
       detail.resource == "clusterroles" &&
-      detail.verb in ["create", "update", "patch"]
+      detail.verb in ["create", "update", "patch"] &&
+      !detail.username.startsWith("system:serviceaccount:argocd:")
     tags: [privilege-escalation, T1078.001]

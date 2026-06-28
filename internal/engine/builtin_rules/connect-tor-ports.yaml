@@ -14,5 +14,10 @@ rules:
     event_type: CONNECT
     # 9090 removed — Prometheus metrics scrape port, universal false positive in k8s
     # 9040 removed — Tor transparent proxy but also used by many legitimate services
-    condition: detail.dst_port in [9001, 9002, 9003, 9030]
+    # Cluster-internal RFC-1918 excluded: port 9001 used by ArgoCD notifications metrics
+    condition: >
+      detail.dst_port in [9001, 9002, 9003, 9030] &&
+      !detail.dst_ip.startsWith("10.") &&
+      !detail.dst_ip.startsWith("192.168.") &&
+      !detail.dst_ip.startsWith("172.")
     tags: [command-control, proxy, T1090.003]
