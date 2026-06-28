@@ -153,6 +153,8 @@ struct {
  * 512 is the smallest power of two ≥ the largest per-type body (open/chmod
  * ≈ 328 B). */
 #define PENDING_RAW_MAX 512
+_Static_assert((PENDING_RAW_MAX & (PENDING_RAW_MAX - 1)) == 0,
+               "PENDING_RAW_MAX must be a power of two (see store_pending mask)");
 
 struct pending_event {
     __u32 event_type;
@@ -199,17 +201,17 @@ static __always_inline void fill_hdr(struct vakta_hdr *h, __u32 type) {
 }
 
 static __always_inline void store_pending(__u32 event_type, void *body, __u32 body_size) {
-    if (body_size > PENDING_RAW_MAX) return;
+    if (body_size > PENDING_RAW_MAX) { incr_drop(); return; }
     __u32 zero = 0;
     struct pending_event *p = bpf_map_lookup_elem(&pending_scratch, &zero);
-    if (!p) return;
+    if (!p) { incr_drop(); return; }
     p->event_type = event_type;
     p->_pad = 0;
     __u32 sz = body_size & (PENDING_RAW_MAX - 1);
-    if (sz != body_size) return;
+    if (sz != body_size) { incr_drop(); return; }
     __builtin_memcpy(p->raw, body, sz);
     __u64 key = bpf_get_current_pid_tgid();
-    bpf_map_update_elem(&pending, &key, p, BPF_ANY);
+    if (bpf_map_update_elem(&pending, &key, p, BPF_ANY) != 0) { incr_drop(); return; }
 }
 
 static __always_inline int emit_paired(__u32 expected_type, __s64 ret, __u32 body_size) {
