@@ -2866,11 +2866,16 @@ func TestPushBuffersAndFlushesOnInterval(t *testing.T) {
 }
 
 func TestPushDropsWhenBufferFull(t *testing.T) {
-	// Server hangs so nothing flushes.
+	// Server blocks until request context is cancelled. Pairs with Client's
+	// ctxCancel-on-Close so c.Close() returns fast instead of waiting for
+	// http.Client.Timeout (10s).
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {}
+		<-r.Context().Done()
 	}))
-	defer srv.Close()
+	defer func() {
+		srv.CloseClientConnections() // force-kill in-flight before Close blocks
+		srv.Close()
+	}()
 	c := newClientWithBufferCap(srv.URL, 24*time.Hour, 1000, 3) // tiny cap
 	defer c.Close()
 	for i := 0; i < 50; i++ {
@@ -2939,6 +2944,8 @@ type Client struct {
 	closeOnce sync.Once
 	stop      chan struct{}
 	done      chan struct{}
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 }
 
 // New builds a Loki client with a 10000-entry internal buffer.
@@ -2947,6 +2954,7 @@ func New(baseURL string, flushInterval time.Duration, batchSize int) *Client {
 }
 
 func newClientWithBufferCap(baseURL string, flushInterval time.Duration, batchSize, bufCap int) *Client {
+	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
 		baseURL:       strings.TrimRight(baseURL, "/"),
 		flushInterval: flushInterval,
@@ -2955,6 +2963,8 @@ func newClientWithBufferCap(baseURL string, flushInterval time.Duration, batchSi
 		buf:           make(chan normalizer.Event, bufCap),
 		stop:          make(chan struct{}),
 		done:          make(chan struct{}),
+		ctx:           ctx,
+		ctxCancel:     cancel,
 	}
 	go c.run()
 	return c
@@ -2984,6 +2994,7 @@ func (c *Client) Stats() LokiStats {
 
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() {
+		c.ctxCancel() // cancel in-flight HTTP requests
 		close(c.stop)
 		<-c.done
 	})
@@ -3073,7 +3084,7 @@ func (c *Client) send(batch []normalizer.Event) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(context.Background(), "POST",
+	req, err := http.NewRequestWithContext(c.ctx, "POST",
 		c.baseURL+"/loki/api/v1/push", bytes.NewReader(body))
 	if err != nil {
 		return err
