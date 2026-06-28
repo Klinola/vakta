@@ -42,7 +42,10 @@ func TestParseRecord_HeaderSize(t *testing.T) {
 }
 
 func TestParseRecord_ExecAttempt(t *testing.T) {
-	rec := append(buildHeader(EventExecAttempt), append([]byte("/bin/ls"), 0)...)
+	// body: 8 ret + cstring filename
+	body := make([]byte, 8)
+	body = append(body, []byte("/bin/ls\x00")...)
+	rec := append(buildHeader(EventExecAttempt), body...)
 	ev, err := parseRecord(rec)
 	if err != nil {
 		t.Fatalf("parseRecord: %v", err)
@@ -57,15 +60,19 @@ func TestParseRecord_ExecAttempt(t *testing.T) {
 	if exec.PID != 123 {
 		t.Fatalf("PID = %d", exec.PID)
 	}
+	if exec.Ret != 0 {
+		t.Fatalf("Ret = %d, want 0", exec.Ret)
+	}
 }
 
 func TestParseRecord_Exec(t *testing.T) {
 	argv := []byte("ls\x00-la\x00/tmp\x00")
 	hdr := buildHeader(EventExec)
-	// wire body: uint32 argv_len + argv bytes
-	var lenBuf [4]byte
-	binary.LittleEndian.PutUint32(lenBuf[:], uint32(len(argv)))
-	rec := append(hdr, append(lenBuf[:], argv...)...)
+	// wire body: int64 ret + uint32 argv_len + argv bytes
+	body := make([]byte, 8+4+len(argv))
+	binary.LittleEndian.PutUint32(body[8:12], uint32(len(argv)))
+	copy(body[12:], argv)
+	rec := append(hdr, body...)
 	ev, err := parseRecord(rec)
 	if err != nil {
 		t.Fatalf("parseRecord: %v", err)
@@ -81,11 +88,12 @@ func TestParseRecord_Exec(t *testing.T) {
 
 func TestParseRecord_Connect(t *testing.T) {
 	hdr := buildHeader(EventConnect)
-	// Wire: u16 family, u16 dport, [16]byte addr
-	body := make([]byte, 2+2+16)
-	binary.LittleEndian.PutUint16(body[0:2], 2) // AF_INET
-	binary.LittleEndian.PutUint16(body[2:4], 443)
-	body[4], body[5], body[6], body[7] = 1, 1, 1, 1 // 1.1.1.1
+	// Wire: int64 ret, u16 family, u16 dport, [16]byte addr
+	body := make([]byte, 8+2+2+16)
+	binary.LittleEndian.PutUint64(body[0:8], 0)   // ret = 0
+	binary.LittleEndian.PutUint16(body[8:10], 2)  // AF_INET
+	binary.LittleEndian.PutUint16(body[10:12], 443)
+	body[12], body[13], body[14], body[15] = 1, 1, 1, 1 // 1.1.1.1
 	rec := append(hdr, body...)
 	ev, err := parseRecord(rec)
 	if err != nil {
@@ -100,6 +108,29 @@ func TestParseRecord_Connect(t *testing.T) {
 	}
 	if !c.DstIP.IsValid() || c.DstIP.String() != "1.1.1.1" {
 		t.Fatalf("DstIP = %s", c.DstIP)
+	}
+	if c.Ret != 0 {
+		t.Fatalf("Ret = %d, want 0", c.Ret)
+	}
+}
+
+func TestParseRecord_ConnectNegativeRet(t *testing.T) {
+	hdr := buildHeader(EventConnect)
+	body := make([]byte, 8+2+2+16)
+	// ret = -EACCES (-13) as int64 little-endian
+	var retNeg int64 = -13
+	binary.LittleEndian.PutUint64(body[0:8], uint64(retNeg))
+	rec := append(hdr, body...)
+	ev, err := parseRecord(rec)
+	if err != nil {
+		t.Fatalf("parseRecord: %v", err)
+	}
+	c, ok := ev.(*ConnectEvent)
+	if !ok {
+		t.Fatalf("got %T", ev)
+	}
+	if c.Ret != -13 {
+		t.Fatalf("Ret = %d, want -13", c.Ret)
 	}
 }
 
@@ -167,7 +198,9 @@ func TestManagerCloseUnblocksStuckSend(t *testing.T) {
 }
 
 func BenchmarkParseRecord_ExecAttempt(b *testing.B) {
-	rec := append(buildHeader(EventExecAttempt), append([]byte("/bin/ls"), 0)...)
+	body := make([]byte, 8)
+	body = append(body, []byte("/bin/ls\x00")...)
+	rec := append(buildHeader(EventExecAttempt), body...)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_, _ = parseRecord(rec)

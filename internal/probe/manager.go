@@ -163,6 +163,24 @@ func (m *Manager) attachSpecs() []attachSpec {
 		{attachTracepoint, "syscalls", "sys_enter_fchmodat", m.objs.HandleSysEnterFchmodat},
 		{attachTracepoint, "syscalls", "sys_enter_mmap", m.objs.HandleSysEnterMmap},
 		{attachTracepoint, "syscalls", "sys_enter_kill", m.objs.HandleSysEnterKill},
+
+		// sys_exit pairs — populate Ret on the matching pending entry.
+		{attachTracepoint, "syscalls", "sys_exit_execve", m.objs.HandleSysExitExecve},
+		{attachTracepoint, "syscalls", "sys_exit_execveat", m.objs.HandleSysExitExecveat},
+		{attachTracepoint, "syscalls", "sys_exit_connect", m.objs.HandleSysExitConnect},
+		{attachTracepoint, "syscalls", "sys_exit_openat", m.objs.HandleSysExitOpenat},
+		{attachTracepoint, "syscalls", "sys_exit_open", m.objs.HandleSysExitOpen},
+		{attachTracepoint, "syscalls", "sys_exit_clone", m.objs.HandleSysExitClone},
+		{attachTracepoint, "syscalls", "sys_exit_clone3", m.objs.HandleSysExitClone3},
+		{attachTracepoint, "syscalls", "sys_exit_unshare", m.objs.HandleSysExitUnshare},
+		{attachTracepoint, "syscalls", "sys_exit_ptrace", m.objs.HandleSysExitPtrace},
+		{attachTracepoint, "syscalls", "sys_exit_bpf", m.objs.HandleSysExitBpf},
+		{attachTracepoint, "syscalls", "sys_exit_memfd_create", m.objs.HandleSysExitMemfdCreate},
+		{attachTracepoint, "syscalls", "sys_exit_chmod", m.objs.HandleSysExitChmod},
+		{attachTracepoint, "syscalls", "sys_exit_fchmod", m.objs.HandleSysExitFchmod},
+		{attachTracepoint, "syscalls", "sys_exit_fchmodat", m.objs.HandleSysExitFchmodat},
+		{attachTracepoint, "syscalls", "sys_exit_mmap", m.objs.HandleSysExitMmap},
+		{attachTracepoint, "syscalls", "sys_exit_kill", m.objs.HandleSysExitKill},
 	}
 }
 

@@ -52,8 +52,14 @@ type Event interface {
 	Header() EventHeader
 }
 
+// Every per-type event carries Ret immediately after EventHeader.
+// Ret is the syscall return value captured by the matching sys_exit
+// handler: 0 (or fd) on success, negative errno on failure. For
+// single-hook events (EXEC, MODULE_LOAD) Ret is always 0.
+
 type ExecAttemptEvent struct {
 	EventHeader
+	Ret      int64
 	Filename string
 }
 
@@ -61,6 +67,7 @@ func (e *ExecAttemptEvent) Header() EventHeader { return e.EventHeader }
 
 type ExecEvent struct {
 	EventHeader
+	Ret  int64
 	Argv [][]byte // raw \0-delimited blob split by parser
 }
 
@@ -68,6 +75,7 @@ func (e *ExecEvent) Header() EventHeader { return e.EventHeader }
 
 type ConnectEvent struct {
 	EventHeader
+	Ret     int64
 	Family  uint16
 	DstIP   netip.Addr
 	DstPort uint16
@@ -77,6 +85,7 @@ func (e *ConnectEvent) Header() EventHeader { return e.EventHeader }
 
 type OpenEvent struct {
 	EventHeader
+	Ret   int64
 	Path  string
 	Flags int32
 }
@@ -85,6 +94,7 @@ func (e *OpenEvent) Header() EventHeader { return e.EventHeader }
 
 type CloneEvent struct {
 	EventHeader
+	Ret        int64
 	CloneFlags uint64
 }
 
@@ -92,6 +102,7 @@ func (e *CloneEvent) Header() EventHeader { return e.EventHeader }
 
 type UnshareEvent struct {
 	EventHeader
+	Ret          int64
 	UnshareFlags uint64
 }
 
@@ -99,6 +110,7 @@ func (e *UnshareEvent) Header() EventHeader { return e.EventHeader }
 
 type PtraceEvent struct {
 	EventHeader
+	Ret       int64
 	Request   int64
 	TargetPID uint32
 }
@@ -107,6 +119,7 @@ func (e *PtraceEvent) Header() EventHeader { return e.EventHeader }
 
 type ModuleLoadEvent struct {
 	EventHeader
+	Ret  int64
 	Name string
 }
 
@@ -114,6 +127,7 @@ func (e *ModuleLoadEvent) Header() EventHeader { return e.EventHeader }
 
 type BPFLoadEvent struct {
 	EventHeader
+	Ret      int64
 	ProgType uint32
 }
 
@@ -121,6 +135,7 @@ func (e *BPFLoadEvent) Header() EventHeader { return e.EventHeader }
 
 type MemfdEvent struct {
 	EventHeader
+	Ret   int64
 	Name  string
 	Flags uint32
 }
@@ -129,6 +144,7 @@ func (e *MemfdEvent) Header() EventHeader { return e.EventHeader }
 
 type ChmodEvent struct {
 	EventHeader
+	Ret  int64
 	Path string
 	Mode uint32
 }
@@ -137,6 +153,7 @@ func (e *ChmodEvent) Header() EventHeader { return e.EventHeader }
 
 type MmapExecEvent struct {
 	EventHeader
+	Ret  int64
 	Addr uint64
 	Len  uint64
 	Prot uint32
@@ -146,6 +163,7 @@ func (e *MmapExecEvent) Header() EventHeader { return e.EventHeader }
 
 type ProcProbeEvent struct {
 	EventHeader
+	Ret       int64
 	TargetPID uint32
 }
 
@@ -154,7 +172,7 @@ func (e *ProcProbeEvent) Header() EventHeader { return e.EventHeader }
 const headerSize = 56 // 52 B of fields + 4 B trailing pad (uint64 alignment)
 
 // parseRecord turns a raw ringbuf record into a typed Event.
-// Wire format: 56-byte EventHeader followed by per-type body.
+// Wire format: 56-byte EventHeader, then int64 Ret, then per-type body.
 func parseRecord(raw []byte) (Event, error) {
 	if len(raw) < headerSize {
 		return nil, fmt.Errorf("short record: %d bytes", len(raw))
@@ -174,93 +192,110 @@ func parseRecord(raw []byte) (Event, error) {
 	body := raw[headerSize:]
 	switch hdr.Type {
 	case EventExecAttempt:
-		return &ExecAttemptEvent{EventHeader: hdr, Filename: cstring(body)}, nil
+		if len(body) < 8 {
+			return nil, fmt.Errorf("exec_attempt: short body")
+		}
+		ret := int64(le.Uint64(body[0:8]))
+		return &ExecAttemptEvent{EventHeader: hdr, Ret: ret, Filename: cstring(body[8:])}, nil
 	case EventExec:
-		if len(body) < 4 {
+		if len(body) < 12 {
 			return nil, fmt.Errorf("exec: short body")
 		}
-		n := binary.LittleEndian.Uint32(body[:4])
-		argv := body[4:]
+		ret := int64(le.Uint64(body[0:8]))
+		n := le.Uint32(body[8:12])
+		argv := body[12:]
 		if int(n) > len(argv) {
 			n = uint32(len(argv))
 		}
-		return &ExecEvent{EventHeader: hdr, Argv: splitNul(argv[:n])}, nil
+		return &ExecEvent{EventHeader: hdr, Ret: ret, Argv: splitNul(argv[:n])}, nil
 	case EventConnect:
-		if len(body) < 20 {
+		if len(body) < 28 { // 8 ret + 2 family + 2 port + 16 addr
 			return nil, fmt.Errorf("connect: short body")
 		}
-		family := binary.LittleEndian.Uint16(body[0:2])
-		port := binary.LittleEndian.Uint16(body[2:4])
+		ret := int64(le.Uint64(body[0:8]))
+		family := le.Uint16(body[8:10])
+		port := le.Uint16(body[10:12])
 		var ip netip.Addr
 		switch family {
 		case 2: // AF_INET
-			ip = netip.AddrFrom4([4]byte{body[4], body[5], body[6], body[7]})
+			ip = netip.AddrFrom4([4]byte{body[12], body[13], body[14], body[15]})
 		case 10: // AF_INET6
 			var a [16]byte
-			copy(a[:], body[4:20])
+			copy(a[:], body[12:28])
 			ip = netip.AddrFrom16(a)
 		}
-		return &ConnectEvent{EventHeader: hdr, Family: family, DstIP: ip, DstPort: port}, nil
+		return &ConnectEvent{EventHeader: hdr, Ret: ret, Family: family, DstIP: ip, DstPort: port}, nil
 	case EventOpen:
-		if len(body) < 4 {
+		if len(body) < 12 {
 			return nil, fmt.Errorf("open: short body")
 		}
-		flags := int32(binary.LittleEndian.Uint32(body[:4]))
-		return &OpenEvent{EventHeader: hdr, Flags: flags, Path: cstring(body[4:])}, nil
+		ret := int64(le.Uint64(body[0:8]))
+		flags := int32(le.Uint32(body[8:12]))
+		return &OpenEvent{EventHeader: hdr, Ret: ret, Flags: flags, Path: cstring(body[12:])}, nil
 	case EventClone:
-		if len(body) < 8 {
+		if len(body) < 16 {
 			return nil, fmt.Errorf("clone: short body")
 		}
-		return &CloneEvent{EventHeader: hdr, CloneFlags: binary.LittleEndian.Uint64(body[:8])}, nil
+		ret := int64(le.Uint64(body[0:8]))
+		return &CloneEvent{EventHeader: hdr, Ret: ret, CloneFlags: le.Uint64(body[8:16])}, nil
 	case EventUnshare:
-		if len(body) < 8 {
+		if len(body) < 16 {
 			return nil, fmt.Errorf("unshare: short body")
 		}
-		return &UnshareEvent{EventHeader: hdr, UnshareFlags: binary.LittleEndian.Uint64(body[:8])}, nil
+		ret := int64(le.Uint64(body[0:8]))
+		return &UnshareEvent{EventHeader: hdr, Ret: ret, UnshareFlags: le.Uint64(body[8:16])}, nil
 	case EventPtrace:
-		if len(body) < 12 {
+		if len(body) < 20 {
 			return nil, fmt.Errorf("ptrace: short body")
 		}
-		req := int64(binary.LittleEndian.Uint64(body[:8]))
-		tgt := binary.LittleEndian.Uint32(body[8:12])
-		return &PtraceEvent{EventHeader: hdr, Request: req, TargetPID: tgt}, nil
+		ret := int64(le.Uint64(body[0:8]))
+		req := int64(le.Uint64(body[8:16]))
+		tgt := le.Uint32(body[16:20])
+		return &PtraceEvent{EventHeader: hdr, Ret: ret, Request: req, TargetPID: tgt}, nil
 	case EventModuleLoad:
 		if len(body) < 8 {
 			return nil, fmt.Errorf("module_load: short body")
 		}
-		return &ModuleLoadEvent{EventHeader: hdr, Name: cstring(body[8:])}, nil
+		ret := int64(le.Uint64(body[0:8]))
+		return &ModuleLoadEvent{EventHeader: hdr, Ret: ret, Name: cstring(body[8:])}, nil
 	case EventBPFLoad:
-		if len(body) < 4 {
+		if len(body) < 12 {
 			return nil, fmt.Errorf("bpf: short body")
 		}
-		return &BPFLoadEvent{EventHeader: hdr, ProgType: binary.LittleEndian.Uint32(body[:4])}, nil
+		ret := int64(le.Uint64(body[0:8]))
+		return &BPFLoadEvent{EventHeader: hdr, Ret: ret, ProgType: le.Uint32(body[8:12])}, nil
 	case EventMemfd:
-		if len(body) < 4 {
+		if len(body) < 12 {
 			return nil, fmt.Errorf("memfd: short body")
 		}
-		flags := binary.LittleEndian.Uint32(body[:4])
-		return &MemfdEvent{EventHeader: hdr, Flags: flags, Name: cstring(body[4:])}, nil
+		ret := int64(le.Uint64(body[0:8]))
+		flags := le.Uint32(body[8:12])
+		return &MemfdEvent{EventHeader: hdr, Ret: ret, Flags: flags, Name: cstring(body[12:])}, nil
 	case EventChmod:
-		if len(body) < 4 {
+		if len(body) < 12 {
 			return nil, fmt.Errorf("chmod: short body")
 		}
-		mode := binary.LittleEndian.Uint32(body[:4])
-		return &ChmodEvent{EventHeader: hdr, Mode: mode, Path: cstring(body[4:])}, nil
+		ret := int64(le.Uint64(body[0:8]))
+		mode := le.Uint32(body[8:12])
+		return &ChmodEvent{EventHeader: hdr, Ret: ret, Mode: mode, Path: cstring(body[12:])}, nil
 	case EventMmapExec:
-		if len(body) < 20 {
+		if len(body) < 28 {
 			return nil, fmt.Errorf("mmap: short body")
 		}
+		ret := int64(le.Uint64(body[0:8]))
 		return &MmapExecEvent{
 			EventHeader: hdr,
-			Addr:        binary.LittleEndian.Uint64(body[0:8]),
-			Len:         binary.LittleEndian.Uint64(body[8:16]),
-			Prot:        binary.LittleEndian.Uint32(body[16:20]),
+			Ret:         ret,
+			Addr:        le.Uint64(body[8:16]),
+			Len:         le.Uint64(body[16:24]),
+			Prot:        le.Uint32(body[24:28]),
 		}, nil
 	case EventProcProbe:
-		if len(body) < 4 {
+		if len(body) < 12 {
 			return nil, fmt.Errorf("proc_probe: short body")
 		}
-		return &ProcProbeEvent{EventHeader: hdr, TargetPID: binary.LittleEndian.Uint32(body[:4])}, nil
+		ret := int64(le.Uint64(body[0:8]))
+		return &ProcProbeEvent{EventHeader: hdr, Ret: ret, TargetPID: le.Uint32(body[8:12])}, nil
 	default:
 		return nil, fmt.Errorf("unknown event type: %d", hdr.Type)
 	}

@@ -46,6 +46,9 @@ func TestProbeReceivesExecEvent(t *testing.T) {
 			}
 			argv0 := string(bytes.TrimRight(e.Argv[0], "\x00"))
 			if strings.HasSuffix(argv0, "/true") || argv0 == "true" {
+				if e.Ret != 0 {
+					t.Fatalf("ExecEvent.Ret = %d, want 0", e.Ret)
+				}
 				return
 			}
 		case <-deadline:
