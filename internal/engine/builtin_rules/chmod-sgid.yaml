@@ -18,6 +18,6 @@ rules:
     event_type: CHMOD
     condition: >
       detail.mode % 8 >= 2 &&
-      (detail.path.startsWith("/etc/") || detail.path.startsWith("/usr/") ||
-       detail.path.startsWith("/bin/") || detail.path.startsWith("/sbin/"))
+      (detail.path.matches("^/etc/") || detail.path.matches("^/usr/") ||
+       detail.path.matches("^/bin/") || detail.path.matches("^/sbin/"))
     tags: [defense-evasion, persistence, T1222]

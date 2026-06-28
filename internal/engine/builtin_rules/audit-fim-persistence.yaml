@@ -5,9 +5,9 @@ rules:
     source: auditd
     event_type: AUDIT_FIM
     condition: >
-      (detail.path.startsWith("/etc/systemd/system/") ||
-       detail.path.startsWith("/usr/lib/systemd/system/") ||
-       detail.path.startsWith("/lib/systemd/system/")) &&
+      (detail.path.matches("^/etc/systemd/system/") ||
+       detail.path.matches("^/usr/lib/systemd/system/") ||
+       detail.path.matches("^/lib/systemd/system/")) &&
       detail.path.endsWith(".service")
     tags: [persistence, T1543.002]
 
@@ -17,8 +17,8 @@ rules:
     source: auditd
     event_type: AUDIT_FIM
     condition: >
-      detail.path.startsWith("/etc/cron") ||
-      detail.path.startsWith("/var/spool/cron/") ||
+      detail.path.matches("^/etc/cron") ||
+      detail.path.matches("^/var/spool/cron/") ||
       detail.path == "/etc/crontab"
     tags: [persistence, T1053.003]
 
@@ -31,6 +31,6 @@ rules:
       detail.path.endsWith("/.profile") || detail.path.endsWith("/.bashrc") ||
       detail.path.endsWith("/.bash_profile") || detail.path.endsWith("/.zshrc") ||
       detail.path.endsWith("/.zprofile") || detail.path.endsWith("/.bash_logout") ||
-      detail.path == "/etc/profile" || detail.path.startsWith("/etc/profile.d/") ||
+      detail.path == "/etc/profile" || detail.path.matches("^/etc/profile\\.d/") ||
       detail.path == "/etc/environment"
     tags: [persistence, T1546.004]

@@ -15,7 +15,7 @@ rules:
     event_type: K8S_AUDIT
     condition: >
       detail.resource == "pods" && detail.verb == "create" &&
-      !detail.username.startsWith("system:")
+      !detail.username.matches("^system:")
     tags: [privilege-escalation, T1610]
 
   - id: k8s-pod-portforward

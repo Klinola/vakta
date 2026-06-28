@@ -6,5 +6,5 @@ rules:
     event_type: AUDIT_FIM
     condition: >
       detail.path == "/etc/sudoers" ||
-      detail.path.startsWith("/etc/sudoers.d/")
+      detail.path.matches("^/etc/sudoers\\.d/")
     tags: [persistence, privilege-escalation, T1548.003]

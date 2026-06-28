@@ -15,7 +15,7 @@ rules:
     source: auditd
     event_type: AUDIT_FIM
     condition: >
-      detail.path.startsWith("/etc/ssh/") &&
+      detail.path.matches("^/etc/ssh/") &&
       detail.path.matches(".*ssh_host_.*key$")
     tags: [collection, credential-access, T1552.004]
 
@@ -26,5 +26,5 @@ rules:
     event_type: AUDIT_FIM
     condition: >
       detail.path == "/etc/ssh/sshd_config" ||
-      detail.path.startsWith("/etc/ssh/sshd_config.d/")
+      detail.path.matches("^/etc/ssh/sshd_config\\.d/")
     tags: [persistence, defense-evasion, T1098]

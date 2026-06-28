@@ -5,8 +5,8 @@ rules:
     source: auditd
     event_type: AUDIT_FIM
     condition: >
-      detail.path.startsWith("/boot/") ||
-      detail.path.startsWith("/etc/grub.d/") ||
+      detail.path.matches("^/boot/") ||
+      detail.path.matches("^/etc/grub\\.d/") ||
       detail.path == "/etc/default/grub"
     tags: [persistence, T1542.003]
 
@@ -32,8 +32,8 @@ rules:
     source: auditd
     event_type: AUDIT_FIM
     condition: >
-      detail.path.startsWith("/etc/pam.d/") ||
-      detail.path.startsWith("/etc/security/") ||
-      detail.path.startsWith("/lib/security/") ||
-      detail.path.startsWith("/lib64/security/")
+      detail.path.matches("^/etc/pam\\.d/") ||
+      detail.path.matches("^/etc/security/") ||
+      detail.path.matches("^/lib/security/") ||
+      detail.path.matches("^/lib64/security/")
     tags: [persistence, credential-access, T1556.003]

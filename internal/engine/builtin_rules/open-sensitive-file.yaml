@@ -40,5 +40,5 @@ rules:
     condition: >
       (detail.path == "/proc/kcore" || detail.path == "/proc/kmem" ||
        detail.path == "/dev/mem" || detail.path == "/dev/kmem") &&
-      !event.comm.startsWith("runc:")
+      !event.comm.matches("^runc:")
     tags: [privilege-escalation, T1055]

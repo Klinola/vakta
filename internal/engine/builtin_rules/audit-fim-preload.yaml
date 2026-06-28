@@ -13,6 +13,6 @@ rules:
     source: auditd
     event_type: AUDIT_FIM
     condition: >
-      detail.path.startsWith("/etc/ld.so.conf") ||
-      detail.path.startsWith("/etc/ld.so.conf.d/")
+      detail.path.matches("^/etc/ld\\.so\\.conf") ||
+      detail.path.matches("^/etc/ld\\.so\\.conf\\.d/")
     tags: [persistence, defense-evasion, T1574.006]

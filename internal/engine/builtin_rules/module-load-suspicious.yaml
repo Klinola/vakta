@@ -5,9 +5,9 @@ rules:
     source: ebpf
     event_type: MODULE_LOAD
     condition: >
-      detail.name.startsWith("/tmp/") ||
-      detail.name.startsWith("/dev/shm/") ||
-      detail.name.startsWith("/var/tmp/")
+      detail.name.matches("^/tmp/") ||
+      detail.name.matches("^/dev/shm/") ||
+      detail.name.matches("^/var/tmp/")
     tags: [persistence, privilege-escalation, rootkit, T1547.006]
 
   - id: module-load-unusual-name

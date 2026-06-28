@@ -5,10 +5,10 @@ rules:
     source: ebpf
     event_type: EXEC
     condition: >
-      detail.filename.startsWith("/tmp/") ||
-      detail.filename.startsWith("/dev/shm/") ||
-      detail.filename.startsWith("/var/tmp/") ||
-      detail.filename.startsWith("/run/shm/")
+      detail.filename.matches("^/tmp/") ||
+      detail.filename.matches("^/dev/shm/") ||
+      detail.filename.matches("^/var/tmp/") ||
+      detail.filename.matches("^/run/shm/")
     tags: [execution, defense-evasion, T1059]
 
   - id: exec-from-proc-mem
@@ -16,5 +16,5 @@ rules:
     severity: critical
     source: ebpf
     event_type: EXEC
-    condition: detail.filename.startsWith("/proc/") && detail.filename.contains("/fd/")
+    condition: detail.filename.matches("^/proc/") && detail.filename.contains("/fd/")
     tags: [execution, defense-evasion, fileless, T1620]

@@ -4,8 +4,10 @@ rules:
     severity: critical
     source: ebpf
     event_type: MEMFD
+    # chrome/chromium excluded: creates anonymous memfd (empty name) for JIT code pages
     condition: >
-      detail.name == "" || detail.name.matches(".*(anon|exec|payload|stage|shell|drop|mem|load).*")
+      (detail.name == "" || detail.name.matches(".*(anon|exec|payload|stage|shell|drop|mem|load).*")) &&
+      !event.comm.matches("^(chrome|chromium|chrome_crashpad)$")
     tags: [defense-evasion, execution, fileless, T1620]
 
   - id: memfd-create-any-nonstandard
@@ -13,6 +15,7 @@ rules:
     severity: high
     source: ebpf
     event_type: MEMFD
+    # chrome/chromium excluded: Playwright/Chrome use memfd for JIT compilation sandboxing
     condition: >
-      !event.comm.matches("^(java|node|python[0-9.]*|ruby|perl|php|go|dotnet|mono|wine|qemu|kvm|jvm)$")
+      !event.comm.matches("^(java|node|python[0-9.]*|ruby|perl|php|go|dotnet|mono|wine|qemu|kvm|jvm|chrome|chromium|chrome_crashpad)$")
     tags: [defense-evasion, execution, fileless, T1620]
