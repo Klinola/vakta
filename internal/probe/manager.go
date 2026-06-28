@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
+	"golang.org/x/sys/unix"
 )
 
 // Stats is a snapshot of probe runtime metrics. Returned by Manager.Stats().
@@ -40,9 +42,10 @@ type attachSpec struct {
 
 // Manager owns the loaded BPF objects, the attached links, and the ringbuf reader.
 type Manager struct {
-	objs   probeObjects
-	links  []link.Link
-	reader *ringbuf.Reader
+	objs           probeObjects
+	links          []link.Link
+	legacyClosers  []io.Closer // legacy perf_event fds for kernels that reject BPF_LINK_CREATE
+	reader         *ringbuf.Reader
 
 	out  chan Event
 	done chan struct{}
@@ -89,6 +92,19 @@ func New(ctx context.Context) (*Manager, <-chan Event, error) {
 		switch s.kind {
 		case attachTracepoint:
 			l, err = link.Tracepoint(s.group, s.name, s.prog, nil)
+			if err != nil && (errors.Is(err, unix.EACCES) || errors.Is(err, unix.EPERM)) {
+				// Runtime fallback for kernels (e.g. RHEL/Rocky 9 with active
+				// bpf LSM) where the cilium/ebpf feature probe reports
+				// BPF_LINK_CREATE as supported but actual attach is rejected.
+				slog.Debug("probe: link API denied, falling back to legacy perf_event_open",
+					"tp", s.group+"/"+s.name, "err", err)
+				if closer, lerr := attachTracepointLegacy(s.group, s.name, s.prog); lerr == nil {
+					m.legacyClosers = append(m.legacyClosers, closer)
+					err = nil
+				} else {
+					err = fmt.Errorf("link.Tracepoint: %w; legacy fallback: %v", err, lerr)
+				}
+			}
 		case attachKprobe:
 			l, err = link.Kprobe(s.name, s.prog, nil)
 		}
@@ -98,10 +114,12 @@ func New(ctx context.Context) (*Manager, <-chan Event, error) {
 			m.statsMissing = append(m.statsMissing, s.group+"/"+s.name)
 			continue
 		}
-		m.links = append(m.links, l)
+		if l != nil {
+			m.links = append(m.links, l)
+		}
 	}
 
-	if len(m.links) == 0 {
+	if len(m.links) == 0 && len(m.legacyClosers) == 0 {
 		_ = m.objs.Close()
 		return nil, nil, errors.New("no tracepoints attached")
 	}
@@ -258,5 +276,8 @@ func (m *Manager) Close() error {
 func (m *Manager) closeLinks() {
 	for i := len(m.links) - 1; i >= 0; i-- {
 		_ = m.links[i].Close()
+	}
+	for i := len(m.legacyClosers) - 1; i >= 0; i-- {
+		_ = m.legacyClosers[i].Close()
 	}
 }
