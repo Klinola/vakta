@@ -1,0 +1,37 @@
+agent:
+  mode: host
+  node_name: ""
+
+sources:
+  ebpf: true
+  auditd: true
+  k8s_audit: false
+  k8s_audit_log: /var/log/k8s-audit.log
+
+rules_dir: /etc/vakta/rules
+actions_dir: /etc/vakta/actions
+
+outputs:
+  alertmanager: ""
+  loki: ""
+  loki_flush_interval: 5s
+  loki_batch_size: 100
+
+storage:
+  sqlite_path: /var/lib/vakta/events.db
+  retention_days: 30
+
+ui:
+  enabled: true
+  addr: ":9090"
+  auth: none
+  username: ""
+  password: ""
+
+playbook:
+  allow_exec_run: false
+  dry_run: false
+
+log:
+  level: info
+  format: json
