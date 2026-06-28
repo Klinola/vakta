@@ -18,7 +18,7 @@ type IngestRequest struct {
 // WireEvent is a JSON-serializable normalizer.Event.
 // DetailType identifies which concrete Detail struct lives in DetailData.
 // Valid DetailType values: "exec","connect","open","clone","unshare",
-//   "ptrace","module","bpf","memfd","chmod","mmap","procprobe","auditfim","k8s", or "".
+//   "ptrace","module","bpf","memfd","chmod","mmap","procprobe","procmemopen","auditfim","k8s", or "".
 type WireEvent struct {
 	ID         uint64          `json:"id"`
 	Ts         time.Time       `json:"ts"`
@@ -84,6 +84,8 @@ func ToWire(ev normalizer.Event) WireEvent {
 		w.DetailType = "mmap"
 	case *normalizer.ProcProbeDetail:
 		w.DetailType = "procprobe"
+	case *normalizer.ProcMemOpenDetail:
+		w.DetailType = "procmemopen"
 	case *normalizer.AuditFIMDetail:
 		w.DetailType = "auditfim"
 	case *normalizer.K8sDetail:
@@ -147,6 +149,8 @@ func FromWire(w WireEvent) (normalizer.Event, error) {
 		target = &normalizer.MmapExecDetail{}
 	case "procprobe":
 		target = &normalizer.ProcProbeDetail{}
+	case "procmemopen":
+		target = &normalizer.ProcMemOpenDetail{}
 	case "auditfim":
 		target = &normalizer.AuditFIMDetail{}
 	case "k8s":

@@ -1,0 +1,20 @@
+rules:
+  - id: proc-mem-open-cross-user
+    name: /proc/pid/mem opened for cross-user process memory access
+    severity: critical
+    source: ebpf
+    event_type: PROC_MEM_OPEN
+    condition: >
+      detail.target_uid != 0 &&
+      event.uid != detail.target_uid
+    tags: [defense-evasion, process-injection, T1055]
+
+  - id: proc-mem-open-same-user
+    name: /proc/pid/mem opened for same-user cross-process memory access
+    severity: warning
+    source: ebpf
+    event_type: PROC_MEM_OPEN
+    condition: >
+      detail.target_uid != 0 &&
+      event.uid == detail.target_uid
+    tags: [defense-evasion, process-injection, T1055]

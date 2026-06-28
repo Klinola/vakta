@@ -94,6 +94,8 @@ func detailMap(d any) map[string]any {
 		return map[string]any{"addr": int(v.Addr), "len": int(v.Len), "prot": int(v.Prot)}
 	case *normalizer.ProcProbeDetail:
 		return map[string]any{"target_pid": int(v.TargetPID)}
+	case *normalizer.ProcMemOpenDetail:
+		return map[string]any{"target_pid": int(v.TargetPID), "target_uid": int(v.TargetUID)}
 	case *normalizer.AuditFIMDetail:
 		return map[string]any{"path": v.Path, "audit_key": v.AuditKey, "op": v.Op}
 	case *normalizer.K8sDetail:

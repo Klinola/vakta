@@ -22,6 +22,7 @@ enum vakta_event_type {
     VK_CHMOD        = 11,
     VK_MMAP_EXEC    = 12,
     VK_PROC_PROBE   = 13,
+    VK_PROC_MEM_OPEN = 14,
 };
 
 /* -------------------- common header (56 B on wire: 52 B fields + 4 B alignment pad) -------------------- */
@@ -130,6 +131,14 @@ struct proc_probe_event {
     struct vakta_hdr hdr;
     __s64 ret;
     __u32 target_pid;
+};
+
+/* 56(hdr) + 8(ret) + 4(target_pid) + 4(target_uid) = 72 B; well under PENDING_RAW_MAX */
+struct proc_mem_open_event {
+    struct vakta_hdr hdr;
+    __s64  ret;
+    __u32  target_pid;
+    __u32  target_uid; /* filled by Go normalizer via /proc/<pid>/status; 0 here */
 };
 
 /* -------------------- maps -------------------- */
@@ -358,6 +367,49 @@ int handle_sys_exit_openat(struct trace_event_raw_sys_exit *ctx) {
 SEC("tracepoint/syscalls/sys_exit_open")
 int handle_sys_exit_open(struct trace_event_raw_sys_exit *ctx) {
     return emit_paired(VK_OPEN, (__s64)ctx->ret, sizeof(struct open_event));
+}
+
+/* -------------------- program: sys_enter_openat → PROC_MEM_OPEN (paired) -------------------- */
+/* Fires when a process opens /proc/<other-pid>/mem (T1055 injection vector).
+ * target_uid is set to 0 here; the Go normalizer fills it from /proc/<pid>/status
+ * because bpf_task_from_pid() requires kernel 5.15 but vakta requires only 5.8. */
+static __always_inline __u32 parse_proc_mem_pid(const char *upath) {
+    char buf[32];
+    long n = bpf_probe_read_user_str(buf, sizeof(buf), upath);
+    if (n <= 0) return 0;
+    if (buf[0] != '/' || buf[1] != 'p' || buf[2] != 'r' ||
+        buf[3] != 'o' || buf[4] != 'c' || buf[5] != '/') return 0;
+    __u32 pid = 0;
+    int i;
+    #pragma unroll
+    for (i = 6; i < 22; i++) {
+        char c = buf[i];
+        if (c >= '0' && c <= '9') { pid = pid * 10 + (c - '0'); continue; }
+        if (c == '/') break;
+        return 0;
+    }
+    if (pid == 0 || i >= 28) return 0;
+    if (buf[i] != '/' || buf[i+1] != 'm' || buf[i+2] != 'e' || buf[i+3] != 'n') return 0;
+    return pid;
+}
+
+SEC("tracepoint/syscalls/sys_enter_openat")
+int handle_sys_enter_proc_mem(struct trace_event_raw_sys_enter *ctx) {
+    __u32 target_pid = parse_proc_mem_pid((const char *)ctx->args[1]);
+    if (target_pid == 0) return 0;
+    __u32 my_pid = (__u32)(bpf_get_current_pid_tgid() >> 32);
+    if (target_pid == my_pid) return 0;
+    struct proc_mem_open_event e = {};
+    fill_hdr(&e.hdr, VK_PROC_MEM_OPEN);
+    e.target_pid = target_pid;
+    e.target_uid = 0;
+    store_pending(VK_PROC_MEM_OPEN, &e, sizeof(e));
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_exit_openat")
+int handle_sys_exit_proc_mem(struct trace_event_raw_sys_exit *ctx) {
+    return emit_paired(VK_PROC_MEM_OPEN, (__s64)ctx->ret, sizeof(struct proc_mem_open_event));
 }
 
 /* -------------------- program: sys_enter_clone/clone3 → CLONE (paired) -------------------- */

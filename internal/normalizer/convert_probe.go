@@ -2,6 +2,9 @@ package normalizer
 
 import (
 	"bytes"
+	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,10 +85,41 @@ func FromProbe(p probe.Event, host string) Event {
 		ev.Type = "PROC_PROBE"
 		ev.Ret = e.Ret
 		ev.Detail = &ProcProbeDetail{TargetPID: e.TargetPID}
+	case *probe.ProcMemOpenEvent:
+		ev.Type = "PROC_MEM_OPEN"
+		ev.Ret = e.Ret
+		targetUID := e.TargetUID
+		if targetUID == 0 && e.TargetPID != 0 {
+			targetUID = readProcUID(e.TargetPID)
+		}
+		ev.Detail = &ProcMemOpenDetail{TargetPID: e.TargetPID, TargetUID: targetUID}
 	default:
 		ev.Type = "UNKNOWN"
 	}
 	return ev
+}
+
+// readProcUID reads the real UID of a process from /proc/<pid>/status.
+// Returns 0 if the file is unreadable (process already exited).
+func readProcUID(pid uint32) uint32 {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "Uid:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			break
+		}
+		v, err := strconv.ParseUint(fields[1], 10, 32)
+		if err == nil {
+			return uint32(v)
+		}
+	}
+	return 0
 }
 
 func cstr(b []byte) string {

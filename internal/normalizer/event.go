@@ -97,6 +97,11 @@ type ProcProbeDetail struct {
 	TargetPID uint32
 }
 
+type ProcMemOpenDetail struct {
+	TargetPID uint32
+	TargetUID uint32
+}
+
 type AuditFIMDetail struct {
 	Path     string
 	AuditKey string

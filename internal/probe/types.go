@@ -25,6 +25,7 @@ const (
 	EventChmod       EventType = 11
 	EventMmapExec    EventType = 12
 	EventProcProbe   EventType = 13
+	EventProcMemOpen EventType = 14
 )
 
 // EventHeader is the 56-byte common prefix of every record on the wire
@@ -169,6 +170,15 @@ type ProcProbeEvent struct {
 
 func (e *ProcProbeEvent) Header() EventHeader { return e.EventHeader }
 
+type ProcMemOpenEvent struct {
+	EventHeader
+	Ret       int64
+	TargetPID uint32
+	TargetUID uint32
+}
+
+func (e *ProcMemOpenEvent) Header() EventHeader { return e.EventHeader }
+
 const headerSize = 56 // 52 B of fields + 4 B trailing pad (uint64 alignment)
 
 // parseRecord turns a raw ringbuf record into a typed Event.
@@ -296,6 +306,17 @@ func parseRecord(raw []byte) (Event, error) {
 		}
 		ret := int64(le.Uint64(body[0:8]))
 		return &ProcProbeEvent{EventHeader: hdr, Ret: ret, TargetPID: le.Uint32(body[8:12])}, nil
+	case EventProcMemOpen:
+		if len(body) < 16 {
+			return nil, fmt.Errorf("proc_mem_open: short body")
+		}
+		ret := int64(le.Uint64(body[0:8]))
+		return &ProcMemOpenEvent{
+			EventHeader: hdr,
+			Ret:         ret,
+			TargetPID:   le.Uint32(body[8:12]),
+			TargetUID:   le.Uint32(body[12:16]),
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown event type: %d", hdr.Type)
 	}
