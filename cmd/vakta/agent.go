@@ -189,7 +189,7 @@ func runAgent(parent context.Context, cfg *config.Config) error {
 			if !ok {
 				return errors.New("normalizer channel closed unexpectedly")
 			}
-			handleEvent(ctx, ev, store, eng, am, lokiC, pb, bus)
+			handleEvent(ctx, ev, store, eng, am, lokiC, pb, bus, cfg.Agent.ClusterName)
 		}
 	}
 }
@@ -285,6 +285,7 @@ func handleEvent(
 	store *storage.DB, eng *engine.Engine,
 	am *alertmanager.Client, lokiC *loki.Client, pb *playbook.Engine,
 	bus *api.EventBus,
+	cluster string,
 ) {
 	if bus != nil {
 		bus.Publish(ev)
@@ -308,13 +309,19 @@ func handleEvent(
 		}
 		am.Send(ctx, []alertmanager.Alert{{
 			Labels: map[string]string{
-				"alertname": m.Rule.Name,
-				"severity":  m.Rule.Severity,
-				"rule_id":   m.Rule.ID,
-				"host":      ev.Host,
+				"alertname":       m.Rule.Name,
+				"severity":        severityToP(m.Rule.Severity),
+				"vakta_severity":  m.Rule.Severity,
+				"rule_id":         m.Rule.ID,
+				"event_type":      ev.Type,
+				"cluster":         cluster,
+				"node":            ev.Host,
 			},
 			Annotations: map[string]string{
-				"summary": fmt.Sprintf("%s on %s (pid=%d)", m.Rule.Name, ev.Host, ev.PID),
+				"summary": fmt.Sprintf("[%s/%s] %s — %s pid=%d",
+					cluster, ev.Host, m.Rule.Name, ev.Comm, ev.PID),
+				"description": fmt.Sprintf("rule=%s severity=%s type=%s",
+					m.Rule.ID, m.Rule.Severity, ev.Type),
 			},
 			StartsAt: m.At,
 		}})
@@ -323,6 +330,18 @@ func handleEvent(
 				slog.Warn("playbook run", "action", m.Rule.ActionID, "err", err)
 			}
 		}
+	}
+}
+
+// severityToP maps vakta severity to Alertmanager P-level routing labels.
+func severityToP(s string) string {
+	switch s {
+	case "critical":
+		return "P0"
+	case "high":
+		return "P1"
+	default: // warning, info
+		return "P2"
 	}
 }
 

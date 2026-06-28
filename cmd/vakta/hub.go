@@ -130,7 +130,7 @@ func runHub(parent context.Context, cfg *config.Config) error {
 			if !ok {
 				return errors.New("hub: event channel closed unexpectedly")
 			}
-			handleEvent(ctx, ev, store, eng, am, nil, pb, bus)
+			handleEvent(ctx, ev, store, eng, am, nil, pb, bus, cfg.Agent.ClusterName)
 		}
 	}
 }

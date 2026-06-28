@@ -1,6 +1,7 @@
 agent:
   mode: host
-  node_name: ""   # filled by k8s downward API (spec.nodeName)
+  node_name: ""        # filled by k8s downward API (spec.nodeName)
+  cluster_name: "prod" # identifies this cluster in alert labels
 sources:
   ebpf: true
   auditd: true

@@ -36,8 +36,9 @@ type ForwarderSection struct {
 }
 
 type AgentSection struct {
-	Mode     string `yaml:"mode"`      // host | k8s
-	NodeName string `yaml:"node_name"` // defaults to hostname when empty
+	Mode        string `yaml:"mode"`         // host | k8s
+	NodeName    string `yaml:"node_name"`    // defaults to hostname when empty
+	ClusterName string `yaml:"cluster_name"` // e.g. "dev" or "prod"; appears in alert labels
 }
 
 type SourcesSection struct {

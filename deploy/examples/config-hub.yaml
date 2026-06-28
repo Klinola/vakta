@@ -1,5 +1,6 @@
 agent:
   node_name: vakta-hub
+  cluster_name: "prod"  # dev | prod — appears in every alert label
 sources:
   ebpf: false
   auditd: false
