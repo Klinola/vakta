@@ -27,14 +27,27 @@ type Entry struct {
 
 // Tailer follows the audit log, delivering Entry values on Entries().
 type Tailer struct {
-	t         *tail.Tail
-	out       chan Entry
-	closeOnce sync.Once
-	cancel    context.CancelFunc
+	t            *tail.Tail
+	out          chan Entry
+	closeOnce    sync.Once
+	cancel       context.CancelFunc
+	skipStatusGE int32 // entries with responseStatus.code >= this are dropped
 }
 
-// New opens the audit log file and begins tailing.
+// Options configures Tailer behavior. Zero values use sensible defaults.
+type Options struct {
+	// SkipStatusCodeGE drops entries whose responseStatus.code >= this value.
+	// Default 400 (skip errors).
+	SkipStatusCodeGE int32
+}
+
+// New opens the audit log file and begins tailing with default options.
 func New(ctx context.Context, path string) (*Tailer, error) {
+	return NewWithOptions(ctx, path, Options{})
+}
+
+// NewWithOptions opens the audit log file with explicit options.
+func NewWithOptions(ctx context.Context, path string, opts Options) (*Tailer, error) {
 	t, err := tail.TailFile(path, tail.Config{
 		Follow:    true,
 		ReOpen:    true,
@@ -44,11 +57,15 @@ func New(ctx context.Context, path string) (*Tailer, error) {
 	if err != nil {
 		return nil, err
 	}
+	if opts.SkipStatusCodeGE == 0 {
+		opts.SkipStatusCodeGE = 400
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	tr := &Tailer{
-		t:      t,
-		out:    make(chan Entry, 512),
-		cancel: cancel,
+		t:            t,
+		out:          make(chan Entry, 512),
+		cancel:       cancel,
+		skipStatusGE: opts.SkipStatusCodeGE,
 	}
 	go tr.run(ctx)
 	return tr, nil
@@ -79,7 +96,7 @@ func (tr *Tailer) run(ctx context.Context) {
 				slog.Warn("k8saudit: tail error", "err", line.Err)
 				continue
 			}
-			e, ok := parse(line.Text)
+			e, ok := parse(line.Text, tr.skipStatusGE)
 			if !ok {
 				continue
 			}
@@ -111,12 +128,12 @@ type raw struct {
 	RequestObject json.RawMessage `json:"requestObject"`
 }
 
-func parse(line string) (Entry, bool) {
+func parse(line string, skipStatusGE int32) (Entry, bool) {
 	var r raw
 	if err := json.Unmarshal([]byte(line), &r); err != nil {
 		return Entry{}, false
 	}
-	if r.ResponseStatus.Code >= 400 {
+	if r.ResponseStatus.Code >= skipStatusGE {
 		return Entry{}, false
 	}
 	ts, _ := time.Parse(time.RFC3339Nano, r.RequestReceivedTimestamp)

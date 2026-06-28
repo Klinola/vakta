@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -29,11 +30,9 @@ func newRulesLintCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// engine.New expects a directory; for a single file, point at its dir
-			// and ensure no other yaml files there would interfere.
 			dir := path
 			if !info.IsDir() {
-				dir = filepathDir(path)
+				dir = filepath.Dir(path)
 				if other := otherYamlSiblings(dir, path); len(other) > 0 {
 					return fmt.Errorf("rules lint expects a single-file dir; siblings present: %v", other)
 				}
@@ -54,7 +53,19 @@ func newRulesTestCmd() *cobra.Command {
 		Short: "Evaluate a rule file against a single event",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
-			e, err := engine.New([]string{filepathDir(args[0])})
+			path := args[0]
+			info, err := os.Stat(path)
+			if err != nil {
+				return err
+			}
+			dir := path
+			if !info.IsDir() {
+				dir = filepath.Dir(path)
+				if other := otherYamlSiblings(dir, path); len(other) > 0 {
+					return fmt.Errorf("rules test expects a single-file dir; siblings present: %v", other)
+				}
+			}
+			e, err := engine.New([]string{dir})
 			if err != nil {
 				return err
 			}
@@ -70,15 +81,6 @@ func newRulesTestCmd() *cobra.Command {
 	}
 }
 
-func filepathDir(p string) string {
-	for i := len(p) - 1; i >= 0; i-- {
-		if p[i] == '/' {
-			return p[:i]
-		}
-	}
-	return "."
-}
-
 func otherYamlSiblings(dir, exclude string) []string {
 	es, err := os.ReadDir(dir)
 	if err != nil {
@@ -90,8 +92,8 @@ func otherYamlSiblings(dir, exclude string) []string {
 			continue
 		}
 		n := e.Name()
-		if (len(n) > 5 && n[len(n)-5:] == ".yaml") || (len(n) > 4 && n[len(n)-4:] == ".yml") {
-			full := dir + "/" + n
+		if filepath.Ext(n) == ".yaml" || filepath.Ext(n) == ".yml" {
+			full := filepath.Join(dir, n)
 			if full != exclude {
 				out = append(out, full)
 			}
