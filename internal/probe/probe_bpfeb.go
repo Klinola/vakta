@@ -18,6 +18,7 @@ import (
 const (
 	probeMapDrops                      = "drops"
 	probeMapEvents                     = "events"
+	probeProgHandleDoInitModule        = "handle_do_init_module"
 	probeProgHandleSchedExec           = "handle_sched_exec"
 	probeProgHandleSysEnterBpf         = "handle_sys_enter_bpf"
 	probeProgHandleSysEnterChmod       = "handle_sys_enter_chmod"
@@ -28,8 +29,6 @@ const (
 	probeProgHandleSysEnterExecveat    = "handle_sys_enter_execveat"
 	probeProgHandleSysEnterFchmod      = "handle_sys_enter_fchmod"
 	probeProgHandleSysEnterFchmodat    = "handle_sys_enter_fchmodat"
-	probeProgHandleSysEnterFinitModule = "handle_sys_enter_finit_module"
-	probeProgHandleSysEnterInitModule  = "handle_sys_enter_init_module"
 	probeProgHandleSysEnterKill        = "handle_sys_enter_kill"
 	probeProgHandleSysEnterMemfdCreate = "handle_sys_enter_memfd_create"
 	probeProgHandleSysEnterMmap        = "handle_sys_enter_mmap"
@@ -81,6 +80,7 @@ type probeSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type probeProgramSpecs struct {
+	HandleDoInitModule        *ebpf.ProgramSpec `ebpf:"handle_do_init_module"`
 	HandleSchedExec           *ebpf.ProgramSpec `ebpf:"handle_sched_exec"`
 	HandleSysEnterBpf         *ebpf.ProgramSpec `ebpf:"handle_sys_enter_bpf"`
 	HandleSysEnterChmod       *ebpf.ProgramSpec `ebpf:"handle_sys_enter_chmod"`
@@ -91,8 +91,6 @@ type probeProgramSpecs struct {
 	HandleSysEnterExecveat    *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execveat"`
 	HandleSysEnterFchmod      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_fchmod"`
 	HandleSysEnterFchmodat    *ebpf.ProgramSpec `ebpf:"handle_sys_enter_fchmodat"`
-	HandleSysEnterFinitModule *ebpf.ProgramSpec `ebpf:"handle_sys_enter_finit_module"`
-	HandleSysEnterInitModule  *ebpf.ProgramSpec `ebpf:"handle_sys_enter_init_module"`
 	HandleSysEnterKill        *ebpf.ProgramSpec `ebpf:"handle_sys_enter_kill"`
 	HandleSysEnterMemfdCreate *ebpf.ProgramSpec `ebpf:"handle_sys_enter_memfd_create"`
 	HandleSysEnterMmap        *ebpf.ProgramSpec `ebpf:"handle_sys_enter_mmap"`
@@ -157,6 +155,7 @@ type probeVariables struct {
 //
 // It can be passed to loadProbeObjects or ebpf.CollectionSpec.LoadAndAssign.
 type probePrograms struct {
+	HandleDoInitModule        *ebpf.Program `ebpf:"handle_do_init_module"`
 	HandleSchedExec           *ebpf.Program `ebpf:"handle_sched_exec"`
 	HandleSysEnterBpf         *ebpf.Program `ebpf:"handle_sys_enter_bpf"`
 	HandleSysEnterChmod       *ebpf.Program `ebpf:"handle_sys_enter_chmod"`
@@ -167,8 +166,6 @@ type probePrograms struct {
 	HandleSysEnterExecveat    *ebpf.Program `ebpf:"handle_sys_enter_execveat"`
 	HandleSysEnterFchmod      *ebpf.Program `ebpf:"handle_sys_enter_fchmod"`
 	HandleSysEnterFchmodat    *ebpf.Program `ebpf:"handle_sys_enter_fchmodat"`
-	HandleSysEnterFinitModule *ebpf.Program `ebpf:"handle_sys_enter_finit_module"`
-	HandleSysEnterInitModule  *ebpf.Program `ebpf:"handle_sys_enter_init_module"`
 	HandleSysEnterKill        *ebpf.Program `ebpf:"handle_sys_enter_kill"`
 	HandleSysEnterMemfdCreate *ebpf.Program `ebpf:"handle_sys_enter_memfd_create"`
 	HandleSysEnterMmap        *ebpf.Program `ebpf:"handle_sys_enter_mmap"`
@@ -180,6 +177,7 @@ type probePrograms struct {
 
 func (p *probePrograms) Close() error {
 	return _ProbeClose(
+		p.HandleDoInitModule,
 		p.HandleSchedExec,
 		p.HandleSysEnterBpf,
 		p.HandleSysEnterChmod,
@@ -190,8 +188,6 @@ func (p *probePrograms) Close() error {
 		p.HandleSysEnterExecveat,
 		p.HandleSysEnterFchmod,
 		p.HandleSysEnterFchmodat,
-		p.HandleSysEnterFinitModule,
-		p.HandleSysEnterInitModule,
 		p.HandleSysEnterKill,
 		p.HandleSysEnterMemfdCreate,
 		p.HandleSysEnterMmap,

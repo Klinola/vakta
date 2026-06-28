@@ -22,8 +22,18 @@ type Stats struct {
 	MissingTracepoints []string
 }
 
-// attachSpec is the (tracepoint group, name, program) tuple used to drive attachment.
+type attachKind int
+
+const (
+	attachTracepoint attachKind = iota
+	attachKprobe
+)
+
+// attachSpec describes one BPF program attachment. For tracepoint, group+name
+// identify the kernel tracepoint. For kprobe, name is the kernel symbol and
+// group is ignored.
 type attachSpec struct {
+	kind        attachKind
 	group, name string
 	prog        *ebpf.Program
 }
@@ -69,10 +79,17 @@ func New(ctx context.Context) (*Manager, <-chan Event, error) {
 
 	specs := m.attachSpecs()
 	for _, s := range specs {
-		l, err := link.Tracepoint(s.group, s.name, s.prog, nil)
+		var l link.Link
+		var err error
+		switch s.kind {
+		case attachTracepoint:
+			l, err = link.Tracepoint(s.group, s.name, s.prog, nil)
+		case attachKprobe:
+			l, err = link.Kprobe(s.name, s.prog, nil)
+		}
 		if err != nil {
-			slog.Warn("probe: tracepoint attach failed",
-				"group", s.group, "name", s.name, "err", err)
+			slog.Warn("probe: attach failed",
+				"kind", s.kind, "group", s.group, "name", s.name, "err", err)
 			m.statsMissing = append(m.statsMissing, s.group+"/"+s.name)
 			continue
 		}
@@ -125,29 +142,27 @@ func (m *Manager) refreshDrops() {
 }
 
 func (m *Manager) attachSpecs() []attachSpec {
-	// Filled out as more SEC programs come online in Task 7.
 	// Each generated probeObjects field name comes from the SEC handler's C function name
 	// (CamelCase). Verify exact names by reading probe_bpfel.go.
 	return []attachSpec{
-		{"sched", "sched_process_exec", m.objs.HandleSchedExec},
-		{"syscalls", "sys_enter_execve", m.objs.HandleSysEnterExecve},
-		{"syscalls", "sys_enter_execveat", m.objs.HandleSysEnterExecveat},
-		{"syscalls", "sys_enter_connect", m.objs.HandleSysEnterConnect},
-		{"syscalls", "sys_enter_openat", m.objs.HandleSysEnterOpenat},
-		{"syscalls", "sys_enter_open", m.objs.HandleSysEnterOpen},
-		{"syscalls", "sys_enter_clone", m.objs.HandleSysEnterClone},
-		{"syscalls", "sys_enter_clone3", m.objs.HandleSysEnterClone3},
-		{"syscalls", "sys_enter_unshare", m.objs.HandleSysEnterUnshare},
-		{"syscalls", "sys_enter_ptrace", m.objs.HandleSysEnterPtrace},
-		{"syscalls", "sys_enter_init_module", m.objs.HandleSysEnterInitModule},
-		{"syscalls", "sys_enter_finit_module", m.objs.HandleSysEnterFinitModule},
-		{"syscalls", "sys_enter_bpf", m.objs.HandleSysEnterBpf},
-		{"syscalls", "sys_enter_memfd_create", m.objs.HandleSysEnterMemfdCreate},
-		{"syscalls", "sys_enter_chmod", m.objs.HandleSysEnterChmod},
-		{"syscalls", "sys_enter_fchmod", m.objs.HandleSysEnterFchmod},
-		{"syscalls", "sys_enter_fchmodat", m.objs.HandleSysEnterFchmodat},
-		{"syscalls", "sys_enter_mmap", m.objs.HandleSysEnterMmap},
-		{"syscalls", "sys_enter_kill", m.objs.HandleSysEnterKill},
+		{attachTracepoint, "sched", "sched_process_exec", m.objs.HandleSchedExec},
+		{attachTracepoint, "syscalls", "sys_enter_execve", m.objs.HandleSysEnterExecve},
+		{attachTracepoint, "syscalls", "sys_enter_execveat", m.objs.HandleSysEnterExecveat},
+		{attachTracepoint, "syscalls", "sys_enter_connect", m.objs.HandleSysEnterConnect},
+		{attachTracepoint, "syscalls", "sys_enter_openat", m.objs.HandleSysEnterOpenat},
+		{attachTracepoint, "syscalls", "sys_enter_open", m.objs.HandleSysEnterOpen},
+		{attachTracepoint, "syscalls", "sys_enter_clone", m.objs.HandleSysEnterClone},
+		{attachTracepoint, "syscalls", "sys_enter_clone3", m.objs.HandleSysEnterClone3},
+		{attachTracepoint, "syscalls", "sys_enter_unshare", m.objs.HandleSysEnterUnshare},
+		{attachTracepoint, "syscalls", "sys_enter_ptrace", m.objs.HandleSysEnterPtrace},
+		{attachKprobe, "", "do_init_module", m.objs.HandleDoInitModule},
+		{attachTracepoint, "syscalls", "sys_enter_bpf", m.objs.HandleSysEnterBpf},
+		{attachTracepoint, "syscalls", "sys_enter_memfd_create", m.objs.HandleSysEnterMemfdCreate},
+		{attachTracepoint, "syscalls", "sys_enter_chmod", m.objs.HandleSysEnterChmod},
+		{attachTracepoint, "syscalls", "sys_enter_fchmod", m.objs.HandleSysEnterFchmod},
+		{attachTracepoint, "syscalls", "sys_enter_fchmodat", m.objs.HandleSysEnterFchmodat},
+		{attachTracepoint, "syscalls", "sys_enter_mmap", m.objs.HandleSysEnterMmap},
+		{attachTracepoint, "syscalls", "sys_enter_kill", m.objs.HandleSysEnterKill},
 	}
 }
 

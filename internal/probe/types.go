@@ -217,7 +217,10 @@ func parseRecord(raw []byte) (Event, error) {
 		tgt := binary.LittleEndian.Uint32(body[8:12])
 		return &PtraceEvent{EventHeader: hdr, Request: req, TargetPID: tgt}, nil
 	case EventModuleLoad:
-		return &ModuleLoadEvent{EventHeader: hdr, Name: cstring(body)}, nil
+		if len(body) < 8 {
+			return nil, fmt.Errorf("module_load: short body")
+		}
+		return &ModuleLoadEvent{EventHeader: hdr, Name: cstring(body[8:])}, nil
 	case EventBPFLoad:
 		if len(body) < 4 {
 			return nil, fmt.Errorf("bpf: short body")

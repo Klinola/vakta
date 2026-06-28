@@ -265,29 +265,21 @@ int handle_sys_enter_ptrace(struct trace_event_raw_sys_enter *ctx) {
     return 0;
 }
 
-/* -------------------- program: sys_enter_init_module/finit_module → MODULE_LOAD -------------------- */
+/* -------------------- program: do_init_module → MODULE_LOAD (kprobe, captures real name) -------------------- */
 #define MOD_NAME_MAX 64
 struct module_load_event {
     struct vakta_hdr hdr;
-    char name[MOD_NAME_MAX];
+    __s64 ret;   /* placeholder, ret stays 0 — kprobe has no sys_exit pair */
+    char  name[MOD_NAME_MAX];
 };
 
-SEC("tracepoint/syscalls/sys_enter_init_module")
-int handle_sys_enter_init_module(struct trace_event_raw_sys_enter *ctx) {
+SEC("kprobe/do_init_module")
+int BPF_KPROBE(handle_do_init_module, struct module *mod) {
     struct module_load_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e) { incr_drop(); return 0; }
     fill_hdr(&e->hdr, VK_MODULE_LOAD);
-    e->name[0] = 0;
-    bpf_ringbuf_submit(e, 0);
-    return 0;
-}
-
-SEC("tracepoint/syscalls/sys_enter_finit_module")
-int handle_sys_enter_finit_module(struct trace_event_raw_sys_enter *ctx) {
-    struct module_load_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
-    if (!e) { incr_drop(); return 0; }
-    fill_hdr(&e->hdr, VK_MODULE_LOAD);
-    e->name[0] = 0;
+    e->ret = 0;
+    bpf_probe_read_kernel_str(&e->name, sizeof(e->name), BPF_CORE_READ(mod, name));
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
