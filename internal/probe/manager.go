@@ -62,6 +62,11 @@ type Manager struct {
 // or Close is called. Failures to attach individual tracepoints are surfaced
 // via Stats().MissingTracepoints rather than fatal errors.
 func New(ctx context.Context) (*Manager, <-chan Event, error) {
+	if err := ensureBPFFS(); err != nil {
+		// Non-fatal: most BPF objects don't require pinning. Log so misconfigured
+		// hosts are diagnosable; pinning failures will surface later if used.
+		slog.Warn("probe: bpffs not mountable, continuing without pinning support", "err", err)
+	}
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return nil, nil, fmt.Errorf("remove memlock: %w", err)
 	}
