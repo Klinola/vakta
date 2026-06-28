@@ -13,7 +13,8 @@ import (
 type Config struct {
 	Agent      AgentSection     `yaml:"agent"`
 	Sources    SourcesSection   `yaml:"sources"`
-	RulesDir   string           `yaml:"rules_dir"`
+	RulesDir        string           `yaml:"rules_dir"`
+	ExtraRulesDirs  []string         `yaml:"extra_rules_dirs"`
 	ActionsDir string           `yaml:"actions_dir"`
 	Outputs    OutputsSection   `yaml:"outputs"`
 	Storage    StorageSection   `yaml:"storage"`

@@ -69,7 +69,8 @@ func runHub(parent context.Context, cfg *config.Config) error {
 	}
 	defer func() { _ = store.Close() }()
 
-	eng, err := engine.New([]string{cfg.RulesDir})
+	ruleDirs := append([]string{cfg.RulesDir}, cfg.ExtraRulesDirs...)
+	eng, err := engine.New(ruleDirs)
 	if err != nil {
 		return fmt.Errorf("engine: %w", err)
 	}
