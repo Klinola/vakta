@@ -35,7 +35,10 @@ rules:
     severity: critical
     source: ebpf
     event_type: OPEN
+    # runc:[2:INIT] opens /proc/kcore during container namespace init to probe kernel
+    # layout before exec-ing the container process — container runtime, not an attacker.
     condition: >
-      detail.path == "/proc/kcore" || detail.path == "/proc/kmem" ||
-      detail.path == "/dev/mem" || detail.path == "/dev/kmem"
+      (detail.path == "/proc/kcore" || detail.path == "/proc/kmem" ||
+       detail.path == "/dev/mem" || detail.path == "/dev/kmem") &&
+      !event.comm.startsWith("runc:")
     tags: [privilege-escalation, T1055]
