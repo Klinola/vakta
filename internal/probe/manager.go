@@ -85,6 +85,7 @@ func New(ctx context.Context) (*Manager, <-chan Event, error) {
 	}
 
 	specs := m.attachSpecs()
+	permDeniedCount := 0
 	for _, s := range specs {
 		var l link.Link
 		var err error
@@ -108,14 +109,30 @@ func New(ctx context.Context) (*Manager, <-chan Event, error) {
 			l, err = link.Kprobe(s.name, s.prog, nil)
 		}
 		if err != nil {
-			slog.Warn("probe: attach failed",
-				"kind", s.kind, "group", s.group, "name", s.name, "err", err)
+			// Suppress per-tracepoint WARN when the failure is a kernel-level
+			// permission deny — emit a single summary after the loop instead.
+			// Other failures (missing tracepoint, kprobe inline, etc.) still WARN.
+			if isPermissionDenied(err) {
+				permDeniedCount++
+				slog.Debug("probe: attach denied by kernel",
+					"kind", s.kind, "group", s.group, "name", s.name, "err", err)
+			} else {
+				slog.Warn("probe: attach failed",
+					"kind", s.kind, "group", s.group, "name", s.name, "err", err)
+			}
 			m.statsMissing = append(m.statsMissing, s.group+"/"+s.name)
 			continue
 		}
 		if l != nil {
 			m.links = append(m.links, l)
 		}
+	}
+
+	// Single-line summary so audit/Rocky LSM nodes don't spam logs at startup.
+	if permDeniedCount > 0 {
+		slog.Warn("probe: kernel denied BPF attach on N probes — degraded mode",
+			"denied", permDeniedCount, "succeeded", len(m.links)+len(m.legacyClosers),
+			"hint", "Rocky/RHEL with bpf LSM active blocks tracepoint attach; agent will run with auditd + k8s_audit only on this node")
 	}
 
 	if len(m.links) == 0 && len(m.legacyClosers) == 0 {
