@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vakta-project/vakta/internal/normalizer"
+	"github.com/Klinola/vakta/internal/normalizer"
 )
 
 func TestPushBuffersAndFlushesOnInterval(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/vakta-project/vakta/internal/normalizer"
+	"github.com/Klinola/vakta/internal/normalizer"
 )
 
 // EventBus is a fan-out for live events to SSE subscribers.

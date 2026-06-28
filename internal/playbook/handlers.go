@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vakta-project/vakta/internal/alertmanager"
-	"github.com/vakta-project/vakta/internal/engine"
+	"github.com/Klinola/vakta/internal/alertmanager"
+	"github.com/Klinola/vakta/internal/engine"
 )
 
 type handlerCtx struct {

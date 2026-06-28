@@ -1,4 +1,4 @@
-module github.com/vakta-project/vakta
+module github.com/Klinola/vakta
 
 go 1.25.0
 

@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/vakta-project/vakta/internal/engine"
-	"github.com/vakta-project/vakta/internal/normalizer"
+	"github.com/Klinola/vakta/internal/engine"
+	"github.com/Klinola/vakta/internal/normalizer"
 )
 
 func newRulesCmd() *cobra.Command {

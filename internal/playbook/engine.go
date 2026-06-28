@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/vakta-project/vakta/internal/alertmanager"
-	"github.com/vakta-project/vakta/internal/engine"
-	"github.com/vakta-project/vakta/internal/storage"
+	"github.com/Klinola/vakta/internal/alertmanager"
+	"github.com/Klinola/vakta/internal/engine"
+	"github.com/Klinola/vakta/internal/storage"
 )
 
 // EngineOptions configures playbook execution.

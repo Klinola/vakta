@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/vakta-project/vakta/internal/engine"
+	"github.com/Klinola/vakta/internal/engine"
 )
 
 // renderParams renders any string value in params through text/template,

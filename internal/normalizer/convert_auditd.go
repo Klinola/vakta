@@ -1,7 +1,7 @@
 package normalizer
 
 import (
-	"github.com/vakta-project/vakta/internal/auditd"
+	"github.com/Klinola/vakta/internal/auditd"
 )
 
 // AuditdRecord is re-exported here for the normalizer's input signature.

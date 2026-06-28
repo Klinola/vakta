@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vakta-project/vakta/internal/probe"
+	"github.com/Klinola/vakta/internal/probe"
 )
 
 // FromProbe converts a probe.Event into the unified normalizer Event.

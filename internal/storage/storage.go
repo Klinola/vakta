@@ -11,7 +11,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/vakta-project/vakta/internal/normalizer"
+	"github.com/Klinola/vakta/internal/normalizer"
 )
 
 //go:embed schema.sql

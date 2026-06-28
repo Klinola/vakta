@@ -13,7 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/vakta-project/vakta/internal/normalizer"
+	"github.com/Klinola/vakta/internal/normalizer"
 )
 
 //go:embed builtin_rules/*.yaml

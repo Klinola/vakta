@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vakta-project/vakta/internal/normalizer"
+	"github.com/Klinola/vakta/internal/normalizer"
 )
 
 func newDB(t *testing.T) *DB {

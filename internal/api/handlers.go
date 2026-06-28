@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/vakta-project/vakta/internal/normalizer"
-	"github.com/vakta-project/vakta/internal/storage"
+	"github.com/Klinola/vakta/internal/normalizer"
+	"github.com/Klinola/vakta/internal/storage"
 )
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vakta-project/vakta/internal/probe"
+	"github.com/Klinola/vakta/internal/probe"
 )
 
 func TestNormalizerFansInProbeOnly(t *testing.T) {

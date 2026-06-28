@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/vakta-project/vakta/internal/probe"
+	"github.com/Klinola/vakta/internal/probe"
 )
 
 func TestFromProbeExec(t *testing.T) {

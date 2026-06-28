@@ -14,17 +14,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/vakta-project/vakta/config"
-	"github.com/vakta-project/vakta/internal/alertmanager"
-	"github.com/vakta-project/vakta/internal/api"
-	"github.com/vakta-project/vakta/internal/auditd"
-	"github.com/vakta-project/vakta/internal/engine"
-	"github.com/vakta-project/vakta/internal/k8saudit"
-	"github.com/vakta-project/vakta/internal/loki"
-	"github.com/vakta-project/vakta/internal/normalizer"
-	"github.com/vakta-project/vakta/internal/playbook"
-	"github.com/vakta-project/vakta/internal/probe"
-	"github.com/vakta-project/vakta/internal/storage"
+	"github.com/Klinola/vakta/config"
+	"github.com/Klinola/vakta/internal/alertmanager"
+	"github.com/Klinola/vakta/internal/api"
+	"github.com/Klinola/vakta/internal/auditd"
+	"github.com/Klinola/vakta/internal/engine"
+	"github.com/Klinola/vakta/internal/k8saudit"
+	"github.com/Klinola/vakta/internal/loki"
+	"github.com/Klinola/vakta/internal/normalizer"
+	"github.com/Klinola/vakta/internal/playbook"
+	"github.com/Klinola/vakta/internal/probe"
+	"github.com/Klinola/vakta/internal/storage"
 )
 
 func newAgentCmd() *cobra.Command {

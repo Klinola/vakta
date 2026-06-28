@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vakta-project/vakta/internal/alertmanager"
-	"github.com/vakta-project/vakta/internal/engine"
-	"github.com/vakta-project/vakta/internal/normalizer"
-	"github.com/vakta-project/vakta/internal/storage"
+	"github.com/Klinola/vakta/internal/alertmanager"
+	"github.com/Klinola/vakta/internal/engine"
+	"github.com/Klinola/vakta/internal/normalizer"
+	"github.com/Klinola/vakta/internal/storage"
 )
 
 func setup(t *testing.T) (*Engine, *storage.DB) {

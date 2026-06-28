@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vakta-project/vakta/internal/engine"
-	"github.com/vakta-project/vakta/internal/playbook"
-	"github.com/vakta-project/vakta/internal/storage"
+	"github.com/Klinola/vakta/internal/engine"
+	"github.com/Klinola/vakta/internal/playbook"
+	"github.com/Klinola/vakta/internal/storage"
 )
 
 type ServerOptions struct {

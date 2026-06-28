@@ -1,7 +1,7 @@
 package normalizer
 
 import (
-	"github.com/vakta-project/vakta/internal/k8saudit"
+	"github.com/Klinola/vakta/internal/k8saudit"
 )
 
 // K8sEntry is re-exported for the normalizer's input signature.

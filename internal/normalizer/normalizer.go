@@ -4,7 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/vakta-project/vakta/internal/probe"
+	"github.com/Klinola/vakta/internal/probe"
 )
 
 const outBufferSize = 8192
