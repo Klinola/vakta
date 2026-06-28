@@ -1,0 +1,20 @@
+agent:
+  node_name: vakta-hub
+sources:
+  ebpf: false
+  auditd: false
+  k8s_audit: false
+hub:
+  ingest_addr: ":7070"
+rules_dir: /etc/vakta/rules
+storage:
+  sqlite_path: /data/vakta/events.db
+  retention_days: 30
+outputs:
+  alertmanager: ""   # filled by deployment environment variable
+ui:
+  enabled: true
+  addr: ":8080"
+log:
+  level: info
+  format: json

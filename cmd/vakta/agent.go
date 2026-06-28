@@ -19,6 +19,7 @@ import (
 	"github.com/Klinola/vakta/internal/api"
 	"github.com/Klinola/vakta/internal/auditd"
 	"github.com/Klinola/vakta/internal/engine"
+	"github.com/Klinola/vakta/internal/forwarder"
 	"github.com/Klinola/vakta/internal/k8saudit"
 	"github.com/Klinola/vakta/internal/loki"
 	"github.com/Klinola/vakta/internal/normalizer"
@@ -56,6 +57,10 @@ func runAgent(parent context.Context, cfg *config.Config) error {
 	host := cfg.Agent.NodeName
 	if host == "" {
 		host, _ = os.Hostname()
+	}
+
+	if cfg.Forwarder.HubURL != "" {
+		return runAgentForwarder(parent, cfg, host)
 	}
 
 	ctx, cancel := context.WithCancel(parent)
@@ -185,6 +190,92 @@ func runAgent(parent context.Context, cfg *config.Config) error {
 				return errors.New("normalizer channel closed unexpectedly")
 			}
 			handleEvent(ctx, ev, store, eng, am, lokiC, pb, bus)
+		}
+	}
+}
+
+// runAgentForwarder runs the agent in forwarder mode: it starts the same event
+// sources (eBPF, auditd, k8s audit) as runAgent, but instead of evaluating
+// rules / storing locally / calling alertmanager, it ships every event to the
+// configured hub over HTTP.
+func runAgentForwarder(parent context.Context, cfg *config.Config, host string) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		s := <-sigCh
+		slog.Info("agent(forwarder): signal received", "signal", s.String())
+		cancel()
+	}()
+
+	var probeCh <-chan probe.Event
+	var probeMgr *probe.Manager
+	if cfg.Sources.EBPF {
+		mgr, ch, err := probe.New(ctx)
+		if err != nil {
+			slog.Warn("probe disabled", "err", err)
+		} else {
+			probeMgr = mgr
+			probeCh = ch
+			defer func() { _ = probeMgr.Close() }()
+		}
+	}
+
+	var auditCh <-chan []auditd.Record
+	if cfg.Sources.Auditd {
+		ar, err := auditd.New(ctx)
+		if err != nil {
+			slog.Warn("auditd disabled", "err", err)
+		} else {
+			defer func() { _ = ar.Close() }()
+			auditCh = auditd.Group(ctx, ar.Records())
+		}
+	}
+
+	var k8sCh <-chan k8saudit.Entry
+	if cfg.Sources.K8sAudit && cfg.Agent.Mode == "k8s" {
+		tl, err := k8saudit.New(ctx, cfg.Sources.K8sAuditLog)
+		if err != nil {
+			slog.Warn("k8saudit disabled", "err", err)
+		} else {
+			defer func() { _ = tl.Close() }()
+			k8sCh = tl.Entries()
+		}
+	}
+
+	n := normalizer.New(probeCh, auditCh, k8sCh, host)
+	defer n.Close()
+
+	f := forwarder.New(
+		cfg.Forwarder.HubURL,
+		cfg.Forwarder.BatchSize,
+		cfg.Forwarder.FlushInterval,
+		cfg.Forwarder.HTTPTimeout,
+	)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f.Run(ctx)
+	}()
+
+	slog.Info("agent(forwarder): starting",
+		"mode", cfg.Agent.Mode, "host", host, "hub_url", cfg.Forwarder.HubURL)
+
+	for {
+		select {
+		case <-ctx.Done():
+			<-done
+			slog.Info("agent(forwarder): shutting down")
+			return nil
+		case ev, ok := <-n.Events():
+			if !ok {
+				cancel()
+				<-done
+				return errors.New("normalizer channel closed unexpectedly")
+			}
+			f.Send(ev)
 		}
 	}
 }

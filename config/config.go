@@ -11,15 +11,28 @@ import (
 )
 
 type Config struct {
-	Agent      AgentSection    `yaml:"agent"`
-	Sources    SourcesSection  `yaml:"sources"`
-	RulesDir   string          `yaml:"rules_dir"`
-	ActionsDir string          `yaml:"actions_dir"`
-	Outputs    OutputsSection  `yaml:"outputs"`
-	Storage    StorageSection  `yaml:"storage"`
-	UI         UISection       `yaml:"ui"`
-	Playbook   PlaybookSection `yaml:"playbook"`
-	Log        LogSection      `yaml:"log"`
+	Agent      AgentSection     `yaml:"agent"`
+	Sources    SourcesSection   `yaml:"sources"`
+	RulesDir   string           `yaml:"rules_dir"`
+	ActionsDir string           `yaml:"actions_dir"`
+	Outputs    OutputsSection   `yaml:"outputs"`
+	Storage    StorageSection   `yaml:"storage"`
+	UI         UISection        `yaml:"ui"`
+	Playbook   PlaybookSection  `yaml:"playbook"`
+	Log        LogSection       `yaml:"log"`
+	Hub        HubSection       `yaml:"hub"`
+	Forwarder  ForwarderSection `yaml:"forwarder"`
+}
+
+type HubSection struct {
+	IngestAddr string `yaml:"ingest_addr"`
+}
+
+type ForwarderSection struct {
+	HubURL        string        `yaml:"hub_url"`
+	BatchSize     int           `yaml:"batch_size"`
+	FlushInterval time.Duration `yaml:"flush_interval"`
+	HTTPTimeout   time.Duration `yaml:"http_timeout"`
 }
 
 type AgentSection struct {
@@ -123,6 +136,18 @@ func applyDefaults(c *Config) {
 	}
 	if c.Log.Format == "" {
 		c.Log.Format = "json"
+	}
+	if c.Hub.IngestAddr == "" {
+		c.Hub.IngestAddr = ":7070"
+	}
+	if c.Forwarder.BatchSize == 0 {
+		c.Forwarder.BatchSize = 50
+	}
+	if c.Forwarder.FlushInterval == 0 {
+		c.Forwarder.FlushInterval = 500 * time.Millisecond
+	}
+	if c.Forwarder.HTTPTimeout == 0 {
+		c.Forwarder.HTTPTimeout = 5 * time.Second
 	}
 }
 

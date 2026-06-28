@@ -1,0 +1,14 @@
+agent:
+  mode: host
+  node_name: ""   # filled by k8s downward API (spec.nodeName)
+sources:
+  ebpf: true
+  auditd: true
+  k8s_audit: false
+forwarder:
+  hub_url: "http://vakta-hub:7070"
+  batch_size: 50
+  flush_interval: 500ms
+log:
+  level: info
+  format: json

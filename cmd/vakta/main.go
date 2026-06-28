@@ -20,6 +20,7 @@ func newRootCmd() *cobra.Command {
 		Short: "vakta — Linux runtime event-processing agent",
 	}
 	root.AddCommand(newAgentCmd())
+	root.AddCommand(newHubCmd())
 	root.AddCommand(newRulesCmd())
 	root.AddCommand(newVersionCmd())
 	return root
