@@ -1,0 +1,28 @@
+# kill_proc_and_alert.yaml — Terminate the offending process and send an alert.
+# Suitable for high/critical severity rules where the process should be stopped
+# immediately (e.g., reverse shell detected, memfd execution).
+#
+# SIGTERM first; escalate to SIGKILL only on critical severity rules.
+actions:
+  - id: kill-proc-and-alert
+    name: Kill process and send alert
+    dry_run: false
+    steps:
+      - id: sigterm
+        action: process.kill
+        params:
+          pid: "{{.event.pid}}"
+          signal: SIGTERM
+
+      - id: sigkill-if-critical
+        action: process.kill
+        condition: rule.severity == "critical"
+        params:
+          pid: "{{.event.pid}}"
+          signal: SIGKILL
+
+      - id: notify
+        action: notify
+        params:
+          severity: "{{.rule.severity}}"
+          message: "[{{.rule.severity}}] {{.rule.name}} — process killed: pid={{.event.pid}} comm={{.event.comm}} uid={{.event.uid}} on {{.event.host}}"

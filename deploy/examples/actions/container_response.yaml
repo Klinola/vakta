@@ -1,0 +1,24 @@
+# container_response.yaml — Pause the container and alert. Use for
+# container-escape or k8s privilege escalation rules where the cgroup_id
+# is available in the event.
+#
+# Requires Docker CLI access on the host (or equivalent runtime).
+actions:
+  - id: container-pause-and-alert
+    name: Pause container and send alert
+    dry_run: false
+    steps:
+      - id: pause
+        action: container.pause
+        params:
+          cgroup_id: "{{.event.cgroup_id}}"
+
+      - id: snapshot
+        action: storage.snapshot
+        params: {}
+
+      - id: notify
+        action: notify
+        params:
+          severity: critical
+          message: "[CRITICAL] Container paused — {{.rule.name}} on {{.event.host}} cgroup={{.event.cgroup_id}} pid={{.event.pid}}"

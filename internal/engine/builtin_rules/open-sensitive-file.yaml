@@ -1,0 +1,41 @@
+rules:
+  - id: open-shadow-file
+    name: /etc/shadow opened by non-root process
+    severity: critical
+    source: ebpf
+    event_type: OPEN
+    condition: >
+      (detail.path == "/etc/shadow" || detail.path == "/etc/gshadow") &&
+      event.uid != 0
+    tags: [credential-access, T1003.008]
+
+  - id: open-ssh-private-key
+    name: SSH private key file opened
+    severity: high
+    source: ebpf
+    event_type: OPEN
+    condition: >
+      detail.path.matches(".*/(id_rsa|id_ecdsa|id_ed25519|id_dsa)$") &&
+      !detail.path.contains(".pub") &&
+      event.uid != 0
+    tags: [credential-access, T1552.004]
+
+  - id: open-docker-socket
+    name: Docker socket accessed by non-privileged process
+    severity: high
+    source: ebpf
+    event_type: OPEN
+    condition: >
+      (detail.path == "/var/run/docker.sock" || detail.path == "/run/docker.sock") &&
+      event.uid != 0
+    tags: [privilege-escalation, container-escape, T1611]
+
+  - id: open-proc-kcore
+    name: /proc/kcore or /proc/kmem opened (kernel memory access)
+    severity: critical
+    source: ebpf
+    event_type: OPEN
+    condition: >
+      detail.path == "/proc/kcore" || detail.path == "/proc/kmem" ||
+      detail.path == "/dev/mem" || detail.path == "/dev/kmem"
+    tags: [privilege-escalation, T1055]

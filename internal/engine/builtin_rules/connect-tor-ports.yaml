@@ -1,0 +1,16 @@
+rules:
+  - id: connect-tor-socks-proxy
+    name: Outbound connection to Tor SOCKS proxy port
+    severity: high
+    source: ebpf
+    event_type: CONNECT
+    condition: detail.dst_port in [9050, 9051, 9150, 9151]
+    tags: [command-control, proxy, T1090.003]
+
+  - id: connect-tor-orport
+    name: Outbound connection to Tor OR port (Tor relay traffic)
+    severity: warning
+    source: ebpf
+    event_type: CONNECT
+    condition: detail.dst_port in [9001, 9002, 9003, 9030, 9040, 9090]
+    tags: [command-control, proxy, T1090.003]

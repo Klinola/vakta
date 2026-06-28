@@ -1,0 +1,30 @@
+rules:
+  - id: module-load-from-tmpdir
+    name: Kernel module loaded from writable temporary directory
+    severity: critical
+    source: ebpf
+    event_type: MODULE_LOAD
+    condition: >
+      detail.name.startsWith("/tmp/") ||
+      detail.name.startsWith("/dev/shm/") ||
+      detail.name.startsWith("/var/tmp/")
+    tags: [persistence, privilege-escalation, rootkit, T1547.006]
+
+  - id: module-load-unusual-name
+    name: Kernel module with suspicious or misleading name loaded
+    severity: high
+    source: ebpf
+    event_type: MODULE_LOAD
+    condition: >
+      detail.name.matches(".*(hide|stealth|rootkit|backdoor|keylog|hook|inject|hid|libc).*") ||
+      detail.name.matches(".*\\.(so|py|sh|pl)$")
+    tags: [persistence, rootkit, T1547.006]
+
+  - id: module-load-unexpected-process
+    name: Kernel module loaded by process other than insmod/modprobe
+    severity: warning
+    source: ebpf
+    event_type: MODULE_LOAD
+    condition: >
+      !event.comm.matches("^(insmod|modprobe|kmod|systemd|udevd|udevadm)$")
+    tags: [persistence, T1547.006]

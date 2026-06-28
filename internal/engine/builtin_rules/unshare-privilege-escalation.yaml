@@ -1,0 +1,21 @@
+rules:
+  # UNSHARE_NEWUSER = 0x10000000 = 268435456
+  - id: unshare-user-namespace
+    name: Non-root process unsharing user namespace
+    severity: high
+    source: ebpf
+    event_type: UNSHARE
+    condition: >
+      event.uid != 0 &&
+      (detail.unshare_flags / 268435456) % 2 == 1
+    tags: [privilege-escalation, T1611]
+
+  - id: unshare-net-namespace-noncontainer
+    name: Network namespace unshare outside container runtime
+    severity: warning
+    source: ebpf
+    event_type: UNSHARE
+    condition: >
+      (detail.unshare_flags / 1073741824) % 2 == 1 &&
+      !event.comm.matches("^(runc|containerd|docker|podman|ip|unshare)$")
+    tags: [defense-evasion, T1599]

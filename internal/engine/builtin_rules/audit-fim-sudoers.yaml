@@ -1,0 +1,10 @@
+rules:
+  - id: fim-sudoers-modified
+    name: sudoers file modified (potential NOPASSWD escalation)
+    severity: critical
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path == "/etc/sudoers" ||
+      detail.path.startsWith("/etc/sudoers.d/")
+    tags: [persistence, privilege-escalation, T1548.003]

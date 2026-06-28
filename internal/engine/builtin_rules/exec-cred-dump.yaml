@@ -1,0 +1,32 @@
+rules:
+  - id: exec-read-shadow-file
+    name: Shadow password file read via shell utility
+    severity: critical
+    source: ebpf
+    event_type: EXEC
+    condition: >
+      detail.filename.matches(".*(cat|head|tail|less|more|grep|awk|cut|strings)$") &&
+      detail.argv.exists(a, a.contains("/etc/shadow") || a.contains("/etc/gshadow"))
+    tags: [credential-access, T1003.008]
+
+  - id: exec-dump-credentials-file
+    name: Known credential dumping tool executed
+    severity: critical
+    source: ebpf
+    event_type: EXEC
+    condition: >
+      detail.filename.matches(".*(mimikatz|secretsdump|dumpntlm|fgdump|pwdump|hashdump|lazagne|keimpx|cme|crackmapexec)$")
+    tags: [credential-access, T1003]
+
+  - id: exec-history-file-read
+    name: Shell history files read for credential harvesting
+    severity: warning
+    source: ebpf
+    event_type: EXEC
+    condition: >
+      detail.filename.matches(".*(cat|head|tail|strings)$") &&
+      detail.argv.exists(a,
+        a.contains(".bash_history") || a.contains(".zsh_history") ||
+        a.contains(".sh_history") || a.contains(".mysql_history") ||
+        a.contains(".psql_history"))
+    tags: [credential-access, T1552.003]

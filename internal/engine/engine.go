@@ -39,7 +39,7 @@ type Engine struct {
 // New loads rules from ruleDirs (built-in dir first, then user dirs).
 // Compiles all CEL conditions; returns error if any fail.
 func New(ruleDirs []string) (*Engine, error) {
-	env, err := newCELEnv()
+	env, err := NewCELEnv()
 	if err != nil {
 		return nil, fmt.Errorf("cel env: %w", err)
 	}
@@ -83,7 +83,7 @@ func (e *Engine) load() error {
 	}
 	progs := make(map[string]cel.Program, len(all))
 	for _, r := range all {
-		p, err := celCompile(e.env, r.Condition)
+		p, err := CELCompile(e.env, r.Condition)
 		if err != nil {
 			return fmt.Errorf("rule %s: %w", r.ID, err)
 		}

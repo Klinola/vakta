@@ -1,0 +1,14 @@
+# alert_only.yaml — Send an Alertmanager notification for every rule match.
+# This is the safest action: no process/network side-effects.
+#
+# Usage: set action_id: alert-only on any rule that should only notify.
+actions:
+  - id: alert-only
+    name: Send alert notification
+    dry_run: false
+    steps:
+      - id: notify
+        action: notify
+        params:
+          severity: "{{.rule.severity}}"
+          message: "[{{.rule.severity}}] {{.rule.name}} on {{.event.host}} — pid={{.event.pid}} comm={{.event.comm}}"

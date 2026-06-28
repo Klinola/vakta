@@ -1,0 +1,45 @@
+rules:
+  - id: exec-identity-discovery
+    name: Identity and privilege discovery commands
+    severity: warning
+    source: ebpf
+    event_type: EXEC
+    condition: >
+      detail.filename.matches(".*(whoami|id)$") ||
+      (detail.filename.matches(".*/uname$") && detail.argv.exists(a, a == "-a"))
+    tags: [discovery, T1033]
+
+  - id: exec-network-discovery
+    name: Network enumeration tools executed
+    severity: warning
+    source: ebpf
+    event_type: EXEC
+    condition: >
+      detail.filename.matches(".*(nmap|masscan|zmap|arp-scan)$") ||
+      (detail.filename.matches(".*/arp$") && detail.argv.exists(a, a == "-a")) ||
+      (detail.filename.matches(".*/ip$") && detail.argv.exists(a, a == "neigh"))
+    tags: [discovery, T1046, T1016]
+
+  - id: exec-process-discovery
+    name: Process enumeration in unusual context
+    severity: info
+    source: ebpf
+    event_type: EXEC
+    condition: >
+      detail.filename.matches(".*/ps$") &&
+      detail.argv.exists(a, a.contains("aux") || a.contains("-ef") || a.contains("axo")) &&
+      event.uid != 0
+    tags: [discovery, T1057]
+
+  - id: exec-security-software-discovery
+    name: Security product discovery attempt
+    severity: warning
+    source: ebpf
+    event_type: EXEC
+    condition: >
+      (detail.filename.matches(".*/find$") &&
+       detail.argv.exists(a, a.contains("falco") || a.contains("snort") || a.contains("ossec") ||
+                            a.contains("auditd") || a.contains("aide") || a.contains("tripwire"))) ||
+      (detail.filename.matches(".*/systemctl$") &&
+       detail.argv.exists(a, a.contains("falco") || a.contains("auditd") || a.contains("osquery")))
+    tags: [discovery, defense-evasion, T1518.001]

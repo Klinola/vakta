@@ -1,0 +1,28 @@
+rules:
+  - id: k8s-pod-exec
+    name: Interactive exec session into pod
+    severity: high
+    source: k8saudit
+    event_type: K8S_AUDIT
+    condition: >
+      detail.resource == "pods/exec" && detail.verb == "create"
+    tags: [execution, lateral-movement, T1609]
+
+  - id: k8s-privileged-pod-create
+    name: Pod created (review for privileged/hostPID/hostNetwork spec)
+    severity: warning
+    source: k8saudit
+    event_type: K8S_AUDIT
+    condition: >
+      detail.resource == "pods" && detail.verb == "create" &&
+      !detail.username.startsWith("system:")
+    tags: [privilege-escalation, T1610]
+
+  - id: k8s-pod-portforward
+    name: Port-forward tunnel opened to pod
+    severity: warning
+    source: k8saudit
+    event_type: K8S_AUDIT
+    condition: >
+      detail.resource == "pods/portforward" && detail.verb == "create"
+    tags: [command-control, lateral-movement, T1572]

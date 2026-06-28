@@ -1,0 +1,36 @@
+rules:
+  - id: fim-systemd-service-new
+    name: New systemd service unit file created
+    severity: high
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      (detail.path.startsWith("/etc/systemd/system/") ||
+       detail.path.startsWith("/usr/lib/systemd/system/") ||
+       detail.path.startsWith("/lib/systemd/system/")) &&
+      detail.path.endsWith(".service")
+    tags: [persistence, T1543.002]
+
+  - id: fim-cron-modified
+    name: Cron job file created or modified
+    severity: high
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path.startsWith("/etc/cron") ||
+      detail.path.startsWith("/var/spool/cron/") ||
+      detail.path == "/etc/crontab"
+    tags: [persistence, T1053.003]
+
+  - id: fim-profile-script-modified
+    name: Shell profile or rc file modified (persistence via login hook)
+    severity: warning
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path.endsWith("/.profile") || detail.path.endsWith("/.bashrc") ||
+      detail.path.endsWith("/.bash_profile") || detail.path.endsWith("/.zshrc") ||
+      detail.path.endsWith("/.zprofile") || detail.path.endsWith("/.bash_logout") ||
+      detail.path == "/etc/profile" || detail.path.startsWith("/etc/profile.d/") ||
+      detail.path == "/etc/environment"
+    tags: [persistence, T1546.004]

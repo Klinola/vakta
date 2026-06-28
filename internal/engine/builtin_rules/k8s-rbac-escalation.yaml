@@ -1,0 +1,31 @@
+rules:
+  - id: k8s-clusterrolebinding-create
+    name: ClusterRoleBinding created or modified (privilege escalation)
+    severity: critical
+    source: k8saudit
+    event_type: K8S_AUDIT
+    condition: >
+      detail.resource == "clusterrolebindings" &&
+      detail.verb in ["create", "update", "patch"]
+    tags: [privilege-escalation, persistence, T1078.001]
+
+  - id: k8s-rolebinding-admin
+    name: RoleBinding granting cluster-admin or high-privilege role
+    severity: high
+    source: k8saudit
+    event_type: K8S_AUDIT
+    condition: >
+      detail.resource == "rolebindings" &&
+      detail.verb in ["create", "update", "patch"] &&
+      detail.name.contains("admin")
+    tags: [privilege-escalation, persistence, T1078.001]
+
+  - id: k8s-clusterrole-create
+    name: ClusterRole created or modified
+    severity: warning
+    source: k8saudit
+    event_type: K8S_AUDIT
+    condition: >
+      detail.resource == "clusterroles" &&
+      detail.verb in ["create", "update", "patch"]
+    tags: [privilege-escalation, T1078.001]

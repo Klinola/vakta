@@ -1,0 +1,29 @@
+rules:
+  # BPF_PROG_TYPE: 1=SOCKET_FILTER 2=KPROBE 5=TRACEPOINT 6=XDP 7=PERF_EVENT
+  - id: bpf-load-unprivileged
+    name: BPF program loaded by non-root process
+    severity: high
+    source: ebpf
+    event_type: BPF_LOAD
+    condition: event.uid != 0
+    tags: [defense-evasion, privilege-escalation, T1612]
+
+  - id: bpf-load-kprobe-unexpected
+    name: kprobe/tracepoint BPF program loaded by non-monitoring process
+    severity: high
+    source: ebpf
+    event_type: BPF_LOAD
+    condition: >
+      detail.prog_type in [2, 5, 7] &&
+      !event.comm.matches("^(bpftrace|bpftool|perf|strace|tetragon|falco|vakta|cilium|datadog-agent)$")
+    tags: [defense-evasion, collection, T1612]
+
+  - id: bpf-load-xdp-unexpected
+    name: XDP BPF program loaded (potential DoS or traffic manipulation)
+    severity: warning
+    source: ebpf
+    event_type: BPF_LOAD
+    condition: >
+      detail.prog_type == 6 &&
+      !event.comm.matches("^(xdp-loader|ip|cilium|bpftool)$")
+    tags: [impact, network, T1498]

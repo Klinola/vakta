@@ -1,0 +1,18 @@
+rules:
+  - id: fim-ld-so-preload
+    name: /etc/ld.so.preload written (LD_PRELOAD rootkit persistence)
+    severity: critical
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: detail.path == "/etc/ld.so.preload"
+    tags: [persistence, defense-evasion, rootkit, T1574.006]
+
+  - id: fim-ld-library-path-conf
+    name: Dynamic linker configuration modified
+    severity: high
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path.startsWith("/etc/ld.so.conf") ||
+      detail.path.startsWith("/etc/ld.so.conf.d/")
+    tags: [persistence, defense-evasion, T1574.006]

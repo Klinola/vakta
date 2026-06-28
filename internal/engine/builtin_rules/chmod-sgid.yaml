@@ -1,0 +1,21 @@
+rules:
+  - id: sgid-bit-set
+    name: SGID bit set on file
+    severity: high
+    source: ebpf
+    event_type: CHMOD
+    condition: >
+      detail.sgid == true &&
+      !event.comm.matches("^(dpkg|apt|apt-get|rpm|yum|dnf|pacman|zypper|emerge|portage)$")
+    tags: [persistence, privilege-escalation, T1548.001]
+
+  - id: chmod-world-writable-sensitive
+    name: World-writable permission set on sensitive path
+    severity: high
+    source: ebpf
+    event_type: CHMOD
+    condition: >
+      detail.mode % 8 >= 2 &&
+      (detail.path.startsWith("/etc/") || detail.path.startsWith("/usr/") ||
+       detail.path.startsWith("/bin/") || detail.path.startsWith("/sbin/"))
+    tags: [defense-evasion, persistence, T1222]

@@ -1,0 +1,34 @@
+rules:
+  # PTRACE_POKETEXT=4, PTRACE_POKEDATA=5 → write to another process's memory
+  - id: ptrace-memory-write
+    name: Process writing to another process memory via ptrace
+    severity: critical
+    source: ebpf
+    event_type: PTRACE
+    condition: >
+      (detail.request == 4 || detail.request == 5) &&
+      event.pid != detail.target_pid
+    tags: [defense-evasion, privilege-escalation, process-injection, T1055.008]
+
+  # PTRACE_ATTACH=16 → attach to arbitrary process for debugging/hijacking
+  - id: ptrace-attach-unexpected
+    name: Unexpected process attach via ptrace
+    severity: high
+    source: ebpf
+    event_type: PTRACE
+    condition: >
+      (detail.request == 16 || detail.request == 16902) &&
+      event.uid != 0 &&
+      !event.comm.matches("^(gdb|strace|ltrace|lldb|perf|valgrind|rr)$")
+    tags: [defense-evasion, process-injection, T1055]
+
+  # PTRACE_SEIZE=0x4206=16902 → modern non-stopping attach
+  - id: ptrace-getregs-write
+    name: ptrace register manipulation (code injection via registers)
+    severity: high
+    source: ebpf
+    event_type: PTRACE
+    condition: >
+      (detail.request == 13 || detail.request == 15) &&
+      event.uid != 0
+    tags: [process-injection, T1055]

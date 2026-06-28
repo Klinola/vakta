@@ -1,0 +1,20 @@
+rules:
+  # PROT_EXEC=4; bit-check: (prot / 4) % 2 == 1
+  # MAP_ANONYMOUS is typically fd=-1 (not directly observable here, use prot alone)
+  - id: mmap-rwx-mapping
+    name: RWX (read-write-execute) anonymous memory mapping (shellcode staging)
+    severity: critical
+    source: ebpf
+    event_type: MMAP_EXEC
+    condition: >
+      detail.prot == 7 &&
+      !event.comm.matches("^(java|node|python[0-9.]*|ruby|mono|wine|qemu|kvm|jvm|ld-linux|ld-musl)$")
+    tags: [defense-evasion, execution, shellcode, T1055.009]
+
+  - id: mmap-exec-only-mapping
+    name: Execute-only memory mapping without read permission
+    severity: high
+    source: ebpf
+    event_type: MMAP_EXEC
+    condition: detail.prot == 4
+    tags: [defense-evasion, execution, T1055.009]

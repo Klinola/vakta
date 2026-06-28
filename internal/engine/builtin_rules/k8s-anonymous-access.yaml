@@ -1,0 +1,19 @@
+rules:
+  - id: k8s-anonymous-api-access
+    name: Kubernetes API accessed by anonymous user
+    severity: critical
+    source: k8saudit
+    event_type: K8S_AUDIT
+    condition: >
+      detail.username == "system:anonymous" ||
+      detail.username == "system:unauthenticated"
+    tags: [initial-access, T1190]
+
+  - id: k8s-serviceaccount-token-request
+    name: ServiceAccount token manually requested via API
+    severity: warning
+    source: k8saudit
+    event_type: K8S_AUDIT
+    condition: >
+      detail.resource == "serviceaccounts/token" && detail.verb == "create"
+    tags: [credential-access, T1528]

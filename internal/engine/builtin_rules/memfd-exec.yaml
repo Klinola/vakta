@@ -1,0 +1,18 @@
+rules:
+  - id: memfd-create-anon-exec
+    name: memfd_create used for anonymous in-memory execution
+    severity: critical
+    source: ebpf
+    event_type: MEMFD
+    condition: >
+      detail.name == "" || detail.name.matches(".*(anon|exec|payload|stage|shell|drop|mem|load).*")
+    tags: [defense-evasion, execution, fileless, T1620]
+
+  - id: memfd-create-any-nonstandard
+    name: memfd_create called by non-runtime process
+    severity: high
+    source: ebpf
+    event_type: MEMFD
+    condition: >
+      !event.comm.matches("^(java|node|python[0-9.]*|ruby|perl|php|go|dotnet|mono|wine|qemu|kvm|jvm)$")
+    tags: [defense-evasion, execution, fileless, T1620]

@@ -1,0 +1,22 @@
+# block_ip_and_alert.yaml — Block the source IP and send an alert.
+# Attach to CONNECT-type rules that produce a detail.dst_ip value.
+#
+# WARNING: requires iptables/nftables on the host and root privileges.
+# Test with dry_run: true first, then set to false in production.
+actions:
+  - id: block-ip-and-alert
+    name: Block outbound IP and send alert
+    dry_run: false
+    steps:
+      - id: block-output
+        action: network.block_ip
+        params:
+          ip: "{{.event.comm}}"   # override this with detail.dst_ip via template if available
+          direction: OUTPUT
+          tool: iptables
+
+      - id: notify
+        action: notify
+        params:
+          severity: "{{.rule.severity}}"
+          message: "[{{.rule.severity}}] {{.rule.name}} — outbound blocked from pid={{.event.pid}} comm={{.event.comm}} on {{.event.host}}"

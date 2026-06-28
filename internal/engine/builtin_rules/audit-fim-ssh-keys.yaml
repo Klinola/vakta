@@ -1,0 +1,30 @@
+rules:
+  - id: fim-authorized-keys-modified
+    name: SSH authorized_keys file modified
+    severity: critical
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path.contains("/.ssh/authorized_keys") ||
+      detail.path.endsWith("/authorized_keys2")
+    tags: [persistence, lateral-movement, T1098.004]
+
+  - id: fim-ssh-host-key-modified
+    name: SSH host key replaced (MITM setup)
+    severity: critical
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path.startsWith("/etc/ssh/") &&
+      detail.path.matches(".*ssh_host_.*key$")
+    tags: [collection, credential-access, T1552.004]
+
+  - id: fim-sshd-config-modified
+    name: sshd_config modified
+    severity: high
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path == "/etc/ssh/sshd_config" ||
+      detail.path.startsWith("/etc/ssh/sshd_config.d/")
+    tags: [persistence, defense-evasion, T1098]

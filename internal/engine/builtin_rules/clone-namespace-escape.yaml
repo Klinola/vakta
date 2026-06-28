@@ -1,0 +1,22 @@
+rules:
+  # CLONE_NEWUSER = 0x10000000 = 268435456
+  # Bit-check without bitwise AND: (n / bit) % 2 == 1
+  - id: clone-user-namespace-unprivileged
+    name: Non-root process creating user namespace (container escape vector)
+    severity: high
+    source: ebpf
+    event_type: CLONE
+    condition: >
+      event.uid != 0 &&
+      (detail.clone_flags / 268435456) % 2 == 1
+    tags: [privilege-escalation, container-escape, T1611]
+
+  - id: clone-pid-namespace
+    name: PID namespace creation outside of container runtime
+    severity: warning
+    source: ebpf
+    event_type: CLONE
+    condition: >
+      (detail.clone_flags / 536870912) % 2 == 1 &&
+      !event.comm.matches("^(runc|containerd|docker|podman|lxc|lxd|nspawn|systemd-nspawn)$")
+    tags: [privilege-escalation, container-escape, T1611]

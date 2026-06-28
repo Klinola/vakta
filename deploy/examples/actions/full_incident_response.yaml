@@ -1,0 +1,40 @@
+# full_incident_response.yaml — Multi-step response for high-severity incidents.
+# 1. Kill the process
+# 2. Snapshot process state for forensics
+# 3. Block outbound if a dst_ip is available (step is conditional)
+# 4. Alert with full context
+#
+# Enable exec.run in vakta config (allow_exec_run: true) to use exec steps.
+actions:
+  - id: full-incident-response
+    name: Kill, snapshot, and alert
+    dry_run: false
+    steps:
+      - id: kill-threat
+        action: process.kill
+        params:
+          pid: "{{.event.pid}}"
+          signal: SIGKILL
+
+      - id: snapshot
+        action: storage.snapshot
+        params: {}
+
+      - id: collect-context
+        action: exec.run
+        condition: rule.severity == "critical"
+        params:
+          cmd: |
+            cat /proc/{{.event.pid}}/status 2>/dev/null || true
+            ls -la /proc/{{.event.pid}}/fd 2>/dev/null || true
+            ss -tnp 2>/dev/null | grep {{.event.pid}} || true
+
+      - id: notify
+        action: notify
+        params:
+          severity: critical
+          message: >-
+            [INCIDENT] {{.rule.name}} on {{.event.host}}
+            pid={{.event.pid}} ppid={{.event.ppid}}
+            comm={{.event.comm}} uid={{.event.uid}}
+            rule={{.rule.id}}

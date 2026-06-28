@@ -1,0 +1,10 @@
+rules:
+  - id: proc-mem-cross-process
+    name: /proc/pid/mem opened for cross-process memory access
+    severity: critical
+    source: ebpf
+    event_type: PROC_PROBE
+    condition: >
+      event.pid != detail.target_pid &&
+      !event.comm.matches("^(gdb|strace|ltrace|lldb|perf|rr|valgrind)$")
+    tags: [defense-evasion, process-injection, T1055]
