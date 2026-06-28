@@ -15,6 +15,7 @@ import (
 	"github.com/vakta-project/vakta/config"
 	"github.com/vakta-project/vakta/internal/alertmanager"
 	"github.com/vakta-project/vakta/internal/engine"
+	"github.com/vakta-project/vakta/internal/k8saudit"
 	"github.com/vakta-project/vakta/internal/loki"
 	"github.com/vakta-project/vakta/internal/normalizer"
 	"github.com/vakta-project/vakta/internal/playbook"
@@ -86,8 +87,20 @@ func runAgent(parent context.Context, cfg *config.Config) error {
 		}
 	}
 
-	// 3) Normalizer (auditd + k8s channels nil for v1 — Tasks 6 + 10 wire them in)
-	n := normalizer.New(probeCh, nil, nil, host)
+	// 3) Optional k8s audit log tailer
+	var k8sCh <-chan k8saudit.Entry
+	if cfg.Sources.K8sAudit && cfg.Agent.Mode == "k8s" {
+		tl, err := k8saudit.New(ctx, cfg.Sources.K8sAuditLog)
+		if err != nil {
+			slog.Warn("k8saudit disabled", "err", err)
+		} else {
+			defer func() { _ = tl.Close() }()
+			k8sCh = tl.Entries()
+		}
+	}
+
+	// 4) Normalizer (auditd channel still nil — Task 6 reader exists but no wiring goroutine here yet)
+	n := normalizer.New(probeCh, nil, k8sCh, host)
 	defer n.Close()
 
 	// 4) Engine

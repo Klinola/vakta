@@ -24,7 +24,7 @@ type Normalizer struct {
 func New(
 	ebpfCh <-chan probe.Event,
 	auditCh <-chan []AuditdRecord,
-	k8sCh <-chan K8sEntryView,
+	k8sCh <-chan K8sEntry,
 	host string,
 ) *Normalizer {
 	n := &Normalizer{
@@ -98,7 +98,7 @@ func (n *Normalizer) runAuditd(ch <-chan []AuditdRecord) {
 	}
 }
 
-func (n *Normalizer) runK8s(ch <-chan K8sEntryView) {
+func (n *Normalizer) runK8s(ch <-chan K8sEntry) {
 	defer n.wg.Done()
 	for {
 		select {
