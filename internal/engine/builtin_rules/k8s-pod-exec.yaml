@@ -2,7 +2,7 @@ rules:
   - id: k8s-pod-exec
     name: Interactive exec session into pod
     severity: high
-    source: k8saudit
+    source: k8s_audit
     event_type: K8S_AUDIT
     condition: >
       detail.resource == "pods/exec" && detail.verb == "create"
@@ -11,7 +11,7 @@ rules:
   - id: k8s-privileged-pod-create
     name: Pod created (review for privileged/hostPID/hostNetwork spec)
     severity: warning
-    source: k8saudit
+    source: k8s_audit
     event_type: K8S_AUDIT
     condition: >
       detail.resource == "pods" && detail.verb == "create" &&
@@ -21,7 +21,7 @@ rules:
   - id: k8s-pod-portforward
     name: Port-forward tunnel opened to pod
     severity: warning
-    source: k8saudit
+    source: k8s_audit
     event_type: K8S_AUDIT
     condition: >
       detail.resource == "pods/portforward" && detail.verb == "create"
