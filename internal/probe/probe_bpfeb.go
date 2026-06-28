@@ -17,7 +17,7 @@ type probePendingEvent struct {
 	_         structs.HostLayout
 	EventType uint32
 	Pad       uint32
-	Raw       [320]int8
+	Raw       [512]int8
 }
 
 // Names of all BPF objects in the ELF.
@@ -27,6 +27,7 @@ const (
 	probeMapDrops                      = "drops"
 	probeMapEvents                     = "events"
 	probeMapPending                    = "pending"
+	probeMapPendingScratch             = "pending_scratch"
 	probeProgHandleDoInitModule        = "handle_do_init_module"
 	probeProgHandleSchedExec           = "handle_sched_exec"
 	probeProgHandleSysEnterBpf         = "handle_sys_enter_bpf"
@@ -145,9 +146,10 @@ type probeProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type probeMapSpecs struct {
-	Drops   *ebpf.MapSpec `ebpf:"drops"`
-	Events  *ebpf.MapSpec `ebpf:"events"`
-	Pending *ebpf.MapSpec `ebpf:"pending"`
+	Drops          *ebpf.MapSpec `ebpf:"drops"`
+	Events         *ebpf.MapSpec `ebpf:"events"`
+	Pending        *ebpf.MapSpec `ebpf:"pending"`
+	PendingScratch *ebpf.MapSpec `ebpf:"pending_scratch"`
 }
 
 // probeVariableSpecs contains global variables before they are loaded into the kernel.
@@ -176,9 +178,10 @@ func (o *probeObjects) Close() error {
 //
 // It can be passed to loadProbeObjects or ebpf.CollectionSpec.LoadAndAssign.
 type probeMaps struct {
-	Drops   *ebpf.Map `ebpf:"drops"`
-	Events  *ebpf.Map `ebpf:"events"`
-	Pending *ebpf.Map `ebpf:"pending"`
+	Drops          *ebpf.Map `ebpf:"drops"`
+	Events         *ebpf.Map `ebpf:"events"`
+	Pending        *ebpf.Map `ebpf:"pending"`
+	PendingScratch *ebpf.Map `ebpf:"pending_scratch"`
 }
 
 func (m *probeMaps) Close() error {
@@ -186,6 +189,7 @@ func (m *probeMaps) Close() error {
 		m.Drops,
 		m.Events,
 		m.Pending,
+		m.PendingScratch,
 	)
 }
 

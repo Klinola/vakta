@@ -148,7 +148,11 @@ struct {
 /* sys_enter handlers stash a partial event here; the paired sys_exit pops it,
  * copies to ringbuf, sets ret = ctx->ret, submits, and deletes. */
 #define PENDING_MAX 16384
-#define PENDING_RAW_MAX 320     /* large enough for the biggest per-type body */
+/* MUST be a power of two: store_pending / emit_paired mask body_size with
+ * (PENDING_RAW_MAX - 1) to convince the verifier the memcpy size is bounded.
+ * 512 is the smallest power of two ≥ the largest per-type body (open/chmod
+ * ≈ 328 B). */
+#define PENDING_RAW_MAX 512
 
 struct pending_event {
     __u32 event_type;
@@ -162,6 +166,16 @@ struct {
     __type(key, __u64);
     __type(value, struct pending_event);
 } pending SEC(".maps");
+
+/* Per-CPU scratch for building a pending_event without blowing the 512 B BPF
+ * stack limit. Each enter handler runs to completion before the same CPU runs
+ * another handler, so a single slot per CPU is safe. */
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, struct pending_event);
+} pending_scratch SEC(".maps");
 
 /* -------------------- helpers -------------------- */
 static __always_inline void incr_drop(void) {
@@ -186,13 +200,16 @@ static __always_inline void fill_hdr(struct vakta_hdr *h, __u32 type) {
 
 static __always_inline void store_pending(__u32 event_type, void *body, __u32 body_size) {
     if (body_size > PENDING_RAW_MAX) return;
-    struct pending_event p = {};
-    p.event_type = event_type;
+    __u32 zero = 0;
+    struct pending_event *p = bpf_map_lookup_elem(&pending_scratch, &zero);
+    if (!p) return;
+    p->event_type = event_type;
+    p->_pad = 0;
     __u32 sz = body_size & (PENDING_RAW_MAX - 1);
     if (sz != body_size) return;
-    __builtin_memcpy(p.raw, body, sz);
+    __builtin_memcpy(p->raw, body, sz);
     __u64 key = bpf_get_current_pid_tgid();
-    bpf_map_update_elem(&pending, &key, &p, BPF_ANY);
+    bpf_map_update_elem(&pending, &key, p, BPF_ANY);
 }
 
 static __always_inline int emit_paired(__u32 expected_type, __s64 ret, __u32 body_size) {
