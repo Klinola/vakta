@@ -1,0 +1,39 @@
+rules:
+  - id: fim-bootloader-modified
+    name: Bootloader configuration modified (potential persistent implant)
+    severity: critical
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path.startsWith("/boot/") ||
+      detail.path.startsWith("/etc/grub.d/") ||
+      detail.path == "/etc/default/grub"
+    tags: [persistence, T1542.003]
+
+  - id: fim-hosts-file-modified
+    name: /etc/hosts modified (DNS redirect or C2 domain override)
+    severity: high
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: detail.path == "/etc/hosts"
+    tags: [defense-evasion, command-control, T1565.001]
+
+  - id: fim-resolv-conf-modified
+    name: DNS resolver configuration modified
+    severity: high
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: detail.path == "/etc/resolv.conf"
+    tags: [defense-evasion, command-control, T1565.001]
+
+  - id: fim-pam-modified
+    name: PAM configuration modified (authentication bypass)
+    severity: critical
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path.startsWith("/etc/pam.d/") ||
+      detail.path.startsWith("/etc/security/") ||
+      detail.path.startsWith("/lib/security/") ||
+      detail.path.startsWith("/lib64/security/")
+    tags: [persistence, credential-access, T1556.003]

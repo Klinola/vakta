@@ -1,0 +1,20 @@
+rules:
+  - id: fim-wtmp-btmp-cleared
+    name: Login record files cleared (covering tracks)
+    severity: critical
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path == "/var/log/wtmp" || detail.path == "/var/log/btmp" ||
+      detail.path == "/var/log/lastlog"
+    tags: [defense-evasion, T1070.003]
+
+  - id: fim-auth-log-modified
+    name: Authentication log file modified (audit trail tampering)
+    severity: high
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path == "/var/log/auth.log" || detail.path == "/var/log/secure" ||
+      detail.path == "/var/log/syslog" || detail.path == "/var/log/messages"
+    tags: [defense-evasion, T1070.002]

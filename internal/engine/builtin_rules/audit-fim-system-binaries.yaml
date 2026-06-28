@@ -1,0 +1,32 @@
+rules:
+  - id: fim-system-binary-modified
+    name: System binary in /usr/bin or /bin modified
+    severity: critical
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path.startsWith("/usr/bin/") || detail.path.startsWith("/usr/sbin/") ||
+      detail.path.startsWith("/bin/") || detail.path.startsWith("/sbin/")
+    tags: [persistence, defense-evasion, T1574.001]
+
+  - id: fim-shared-library-modified
+    name: Shared library file modified (potential hijack)
+    severity: critical
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      (detail.path.startsWith("/usr/lib/") || detail.path.startsWith("/usr/lib64/") ||
+       detail.path.startsWith("/lib/") || detail.path.startsWith("/lib64/")) &&
+      (detail.path.endsWith(".so") || detail.path.contains(".so."))
+    tags: [persistence, defense-evasion, T1574.006]
+
+  - id: fim-kernel-module-config
+    name: Kernel module load configuration modified
+    severity: high
+    source: auditd
+    event_type: AUDIT_FIM
+    condition: >
+      detail.path.startsWith("/etc/modprobe.d/") ||
+      detail.path == "/etc/modules" ||
+      detail.path.startsWith("/etc/modules-load.d/")
+    tags: [persistence, T1547.006]
