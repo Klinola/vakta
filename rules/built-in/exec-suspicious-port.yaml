@@ -1,0 +1,8 @@
+rules:
+  - id: connect-to-known-c2-port
+    name: Connect to known C2 port
+    severity: high
+    source: ebpf
+    event_type: CONNECT
+    condition: detail.dst_port in [4444, 8443, 1337, 6666, 9001] && event.uid != 0
+    tags: [c2, network]

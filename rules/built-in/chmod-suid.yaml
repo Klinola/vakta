@@ -1,0 +1,8 @@
+rules:
+  - id: suid-bit-set
+    name: SUID bit set on file
+    severity: high
+    source: ebpf
+    event_type: CHMOD
+    condition: detail.suid == true && !event.comm.matches("^(dpkg|apt|rpm|yum)$")
+    tags: [persistence, suid]
