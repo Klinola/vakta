@@ -12,5 +12,7 @@ rules:
     severity: warning
     source: ebpf
     event_type: CONNECT
-    condition: detail.dst_port in [9001, 9002, 9003, 9030, 9040, 9090]
+    # 9090 removed — Prometheus metrics scrape port, universal false positive in k8s
+    # 9040 removed — Tor transparent proxy but also used by many legitimate services
+    condition: detail.dst_port in [9001, 9002, 9003, 9030]
     tags: [command-control, proxy, T1090.003]
