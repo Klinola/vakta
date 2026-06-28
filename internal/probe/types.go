@@ -27,16 +27,19 @@ const (
 	EventProcProbe   EventType = 13
 )
 
-// EventHeader is the 48-byte common prefix (44 bytes of fields + 4 bytes trailing pad to 8-byte alignment) of every record on the wire.
-// Field order and types MUST match struct vakta_hdr in probe.bpf.c.
+// EventHeader is the 56-byte common prefix of every record on the wire
+// (52 bytes of declared fields + 4 bytes trailing pad to 8-byte alignment).
+// CgroupID is the cgroup v2 ID from bpf_get_current_cgroup_id(); 0 if the
+// task is in the root cgroup or the kernel lacks cgroup v2.
 type EventHeader struct {
-	TsNs uint64
-	PID  uint32
-	PPID uint32
-	UID  uint32
-	GID  uint32
-	Type EventType
-	Comm [16]byte
+	TsNs     uint64
+	CgroupID uint64
+	PID      uint32
+	PPID     uint32
+	UID      uint32
+	GID      uint32
+	Type     EventType
+	Comm     [16]byte
 }
 
 // Event is what the probe channel delivers. Consumers type-switch:
@@ -148,10 +151,10 @@ type ProcProbeEvent struct {
 
 func (e *ProcProbeEvent) Header() EventHeader { return e.EventHeader }
 
-const headerSize = 48
+const headerSize = 56 // 52 B of fields + 4 B trailing pad (uint64 alignment)
 
 // parseRecord turns a raw ringbuf record into a typed Event.
-// Wire format: 48-byte EventHeader followed by per-type body.
+// Wire format: 56-byte EventHeader followed by per-type body.
 func parseRecord(raw []byte) (Event, error) {
 	if len(raw) < headerSize {
 		return nil, fmt.Errorf("short record: %d bytes", len(raw))

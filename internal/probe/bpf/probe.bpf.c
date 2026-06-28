@@ -24,9 +24,10 @@ enum vakta_event_type {
     VK_PROC_PROBE   = 13,
 };
 
-/* -------------------- common header (48 B on wire: 44 B fields + 4 B alignment pad) -------------------- */
+/* -------------------- common header (56 B on wire: 52 B fields + 4 B alignment pad) -------------------- */
 struct vakta_hdr {
     __u64 ts_ns;
+    __u64 cgroup_id;
     __u32 pid;
     __u32 ppid;
     __u32 uid;
@@ -71,13 +72,14 @@ static __always_inline void incr_drop(void) {
 
 static __always_inline void fill_hdr(struct vakta_hdr *h, __u32 type) {
     __u64 id = bpf_get_current_pid_tgid();
-    h->ts_ns = bpf_ktime_get_ns();
-    h->pid   = (__u32)(id >> 32);
+    h->ts_ns     = bpf_ktime_get_ns();
+    h->cgroup_id = bpf_get_current_cgroup_id();
+    h->pid       = (__u32)(id >> 32);
     struct task_struct *task = (struct task_struct *)bpf_get_current_task();
-    h->ppid  = BPF_CORE_READ(task, real_parent, tgid);
+    h->ppid      = BPF_CORE_READ(task, real_parent, tgid);
     __u64 uidgid = bpf_get_current_uid_gid();
-    h->uid   = (__u32)uidgid;
-    h->gid   = (__u32)(uidgid >> 32);
+    h->uid       = (__u32)uidgid;
+    h->gid       = (__u32)(uidgid >> 32);
     h->event_type = type;
     bpf_get_current_comm(&h->comm, sizeof(h->comm));
 }
