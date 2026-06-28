@@ -1,10 +1,14 @@
 rules:
-  - id: proc-mem-cross-process
-    name: /proc/pid/mem opened for cross-process memory access
-    severity: critical
+  # PROC_PROBE hook fires on kill(pid, 0) — the standard cross-process existence
+  # probe. Detects reconnaissance / pre-injection enumeration; NOT a /proc/pid/mem
+  # open (that is PROC_MEM_OPEN, a separate event type not yet implemented).
+  - id: proc-pid-existence-probe
+    name: Cross-process existence probe via kill(pid, 0)
+    severity: warning
     source: ebpf
     event_type: PROC_PROBE
     condition: >
       event.pid != detail.target_pid &&
+      event.uid != detail.target_uid &&
       !event.comm.matches("^(gdb|strace|ltrace|lldb|perf|rr|valgrind)$")
-    tags: [defense-evasion, process-injection, T1055]
+    tags: [discovery, process-enumeration, T1057]
