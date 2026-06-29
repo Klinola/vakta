@@ -1,4 +1,5 @@
 bin/
+CLAUDE.local.md
 *.o
 *.bpf.o
 vmlinux.h
