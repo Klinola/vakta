@@ -6,9 +6,12 @@ rules:
     event_type: CHMOD
     # Package managers (system) and k8s kubelet/k3s-agent set SGID on projected SA token
     # volumes as part of normal pod lifecycle — exclude both by comm.
+    # chmod comm excluded: the chmod tool itself is used by init scripts (e.g. postgres init
+    # sets SGID on /var/run/postgresql); the tool is the expected actor for permission changes.
+    # Suspicious SGID is a service binary calling chmod(2) directly — comm won't be "chmod".
     condition: >
       detail.sgid == true &&
-      !event.comm.matches("^(dpkg|apt|apt-get|apk|rpm|yum|dnf|pacman|zypper|emerge|portage|kubelet|k3s-agent|k3s-server|k3s|containerd|runc|dockerd)$")
+      !event.comm.matches("^(dpkg|apt|apt-get|apk|rpm|yum|dnf|pacman|zypper|emerge|portage|kubelet|k3s-agent|k3s-server|k3s|containerd|runc|dockerd|chmod)$")
     tags: [persistence, privilege-escalation, T1548.001]
 
   - id: chmod-world-writable-sensitive

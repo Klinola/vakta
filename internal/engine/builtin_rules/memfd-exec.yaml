@@ -4,10 +4,11 @@ rules:
     severity: critical
     source: ebpf
     event_type: MEMFD
-    # chrome/chromium excluded: creates anonymous memfd (empty name) for JIT code pages
+    # chrome/chromium/chrome-headless excluded: creates anonymous memfd (empty name) for JIT
+    # code pages; chrome-headless is the Linux process name for headless Chrome (e.g. Playwright)
     condition: >
       (detail.name == "" || detail.name.matches(".*(anon|exec|payload|stage|shell|drop|mem|load).*")) &&
-      !event.comm.matches("^(chrome|chromium|chrome_crashpad)$")
+      !event.comm.matches("^(chrome|chromium|chrome_crashpad|chrome-headless|ThreadPoolSingl)$")
     tags: [defense-evasion, execution, fileless, T1620]
 
   - id: memfd-create-any-nonstandard
@@ -15,7 +16,8 @@ rules:
     severity: high
     source: ebpf
     event_type: MEMFD
-    # chrome/chromium excluded: Playwright/Chrome use memfd for JIT compilation sandboxing
+    # chrome/chromium/chrome-headless excluded: Playwright/Chrome use memfd for JIT compilation
+    # sandboxing; chrome-headless is the Linux process name for headless Chrome in CI/testing
     condition: >
-      !event.comm.matches("^(java|node|python[0-9.]*|ruby|perl|php|go|dotnet|mono|wine|qemu|kvm|jvm|chrome|chromium|chrome_crashpad)$")
+      !event.comm.matches("^(java|node|python[0-9.]*|ruby|perl|php|go|dotnet|mono|wine|qemu|kvm|jvm|chrome|chromium|chrome_crashpad|chrome-headless|ThreadPoolSingl)$")
     tags: [defense-evasion, execution, fileless, T1620]
