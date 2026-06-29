@@ -28,6 +28,7 @@ type attachKind int
 const (
 	attachTracepoint attachKind = iota
 	attachKprobe
+	attachRawTracepoint
 )
 
 // attachSpec describes one BPF program attachment. For tracepoint, group+name
@@ -107,6 +108,12 @@ func New(ctx context.Context) (*Manager, <-chan Event, error) {
 			}
 		case attachKprobe:
 			l, err = link.Kprobe(s.name, s.prog, nil)
+		case attachRawTracepoint:
+			// tp_btf attaches via LinkCreateTracing/RawTracepointOpen — bypasses
+			// perf_event_set_bpf_prog (the path that returns EACCES on Rocky 9).
+			// SEC("tp_btf/<name>") carries the attach target in BTF, so opts.Name
+			// is unused and s.name is informational only.
+			l, err = link.AttachTracing(link.TracingOptions{Program: s.prog})
 		}
 		if err != nil {
 			// Suppress per-tracepoint WARN when the failure is a kernel-level
@@ -185,41 +192,11 @@ func (m *Manager) attachSpecs() []attachSpec {
 	// (CamelCase). Verify exact names by reading probe_bpfel.go.
 	return []attachSpec{
 		{attachTracepoint, "sched", "sched_process_exec", m.objs.HandleSchedExec},
-		{attachTracepoint, "syscalls", "sys_enter_execve", m.objs.HandleSysEnterExecve},
-		{attachTracepoint, "syscalls", "sys_enter_execveat", m.objs.HandleSysEnterExecveat},
-		{attachTracepoint, "syscalls", "sys_enter_connect", m.objs.HandleSysEnterConnect},
-		{attachTracepoint, "syscalls", "sys_enter_openat", m.objs.HandleSysEnterOpenat},
-		{attachTracepoint, "syscalls", "sys_enter_open", m.objs.HandleSysEnterOpen},
-		{attachTracepoint, "syscalls", "sys_enter_clone", m.objs.HandleSysEnterClone},
-		{attachTracepoint, "syscalls", "sys_enter_clone3", m.objs.HandleSysEnterClone3},
-		{attachTracepoint, "syscalls", "sys_enter_unshare", m.objs.HandleSysEnterUnshare},
-		{attachTracepoint, "syscalls", "sys_enter_ptrace", m.objs.HandleSysEnterPtrace},
 		{attachKprobe, "", "do_init_module", m.objs.HandleDoInitModule},
-		{attachTracepoint, "syscalls", "sys_enter_bpf", m.objs.HandleSysEnterBpf},
-		{attachTracepoint, "syscalls", "sys_enter_memfd_create", m.objs.HandleSysEnterMemfdCreate},
-		{attachTracepoint, "syscalls", "sys_enter_chmod", m.objs.HandleSysEnterChmod},
-		{attachTracepoint, "syscalls", "sys_enter_fchmod", m.objs.HandleSysEnterFchmod},
-		{attachTracepoint, "syscalls", "sys_enter_fchmodat", m.objs.HandleSysEnterFchmodat},
-		{attachTracepoint, "syscalls", "sys_enter_mmap", m.objs.HandleSysEnterMmap},
-		{attachTracepoint, "syscalls", "sys_enter_kill", m.objs.HandleSysEnterKill},
-
-		// sys_exit pairs — populate Ret on the matching pending entry.
-		{attachTracepoint, "syscalls", "sys_exit_execve", m.objs.HandleSysExitExecve},
-		{attachTracepoint, "syscalls", "sys_exit_execveat", m.objs.HandleSysExitExecveat},
-		{attachTracepoint, "syscalls", "sys_exit_connect", m.objs.HandleSysExitConnect},
-		{attachTracepoint, "syscalls", "sys_exit_openat", m.objs.HandleSysExitOpenat},
-		{attachTracepoint, "syscalls", "sys_exit_open", m.objs.HandleSysExitOpen},
-		{attachTracepoint, "syscalls", "sys_exit_clone", m.objs.HandleSysExitClone},
-		{attachTracepoint, "syscalls", "sys_exit_clone3", m.objs.HandleSysExitClone3},
-		{attachTracepoint, "syscalls", "sys_exit_unshare", m.objs.HandleSysExitUnshare},
-		{attachTracepoint, "syscalls", "sys_exit_ptrace", m.objs.HandleSysExitPtrace},
-		{attachTracepoint, "syscalls", "sys_exit_bpf", m.objs.HandleSysExitBpf},
-		{attachTracepoint, "syscalls", "sys_exit_memfd_create", m.objs.HandleSysExitMemfdCreate},
-		{attachTracepoint, "syscalls", "sys_exit_chmod", m.objs.HandleSysExitChmod},
-		{attachTracepoint, "syscalls", "sys_exit_fchmod", m.objs.HandleSysExitFchmod},
-		{attachTracepoint, "syscalls", "sys_exit_fchmodat", m.objs.HandleSysExitFchmodat},
-		{attachTracepoint, "syscalls", "sys_exit_mmap", m.objs.HandleSysExitMmap},
-		{attachTracepoint, "syscalls", "sys_exit_kill", m.objs.HandleSysExitKill},
+		// tp_btf dispatchers (issue #1): bypass perf_event_set_bpf_prog (EACCES on Rocky/RHEL 9.x).
+		// group="" because raw_tp attach takes only a tracepoint name.
+		{attachRawTracepoint, "", "sys_enter", m.objs.HandleRawSysEnter},
+		{attachRawTracepoint, "", "sys_exit", m.objs.HandleRawSysExit},
 	}
 }
 

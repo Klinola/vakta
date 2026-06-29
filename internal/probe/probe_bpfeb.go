@@ -24,44 +24,14 @@ type probePendingEvent struct {
 //
 // Used for safe lookups in a Collection or CollectionSpec.
 const (
-	probeMapDrops                      = "drops"
-	probeMapEvents                     = "events"
-	probeMapPending                    = "pending"
-	probeMapPendingScratch             = "pending_scratch"
-	probeProgHandleDoInitModule        = "handle_do_init_module"
-	probeProgHandleSchedExec           = "handle_sched_exec"
-	probeProgHandleSysEnterBpf         = "handle_sys_enter_bpf"
-	probeProgHandleSysEnterChmod       = "handle_sys_enter_chmod"
-	probeProgHandleSysEnterClone       = "handle_sys_enter_clone"
-	probeProgHandleSysEnterClone3      = "handle_sys_enter_clone3"
-	probeProgHandleSysEnterConnect     = "handle_sys_enter_connect"
-	probeProgHandleSysEnterExecve      = "handle_sys_enter_execve"
-	probeProgHandleSysEnterExecveat    = "handle_sys_enter_execveat"
-	probeProgHandleSysEnterFchmod      = "handle_sys_enter_fchmod"
-	probeProgHandleSysEnterFchmodat    = "handle_sys_enter_fchmodat"
-	probeProgHandleSysEnterKill        = "handle_sys_enter_kill"
-	probeProgHandleSysEnterMemfdCreate = "handle_sys_enter_memfd_create"
-	probeProgHandleSysEnterMmap        = "handle_sys_enter_mmap"
-	probeProgHandleSysEnterOpen        = "handle_sys_enter_open"
-	probeProgHandleSysEnterOpenat      = "handle_sys_enter_openat"
-	probeProgHandleSysEnterPtrace      = "handle_sys_enter_ptrace"
-	probeProgHandleSysEnterUnshare     = "handle_sys_enter_unshare"
-	probeProgHandleSysExitBpf          = "handle_sys_exit_bpf"
-	probeProgHandleSysExitChmod        = "handle_sys_exit_chmod"
-	probeProgHandleSysExitClone        = "handle_sys_exit_clone"
-	probeProgHandleSysExitClone3       = "handle_sys_exit_clone3"
-	probeProgHandleSysExitConnect      = "handle_sys_exit_connect"
-	probeProgHandleSysExitExecve       = "handle_sys_exit_execve"
-	probeProgHandleSysExitExecveat     = "handle_sys_exit_execveat"
-	probeProgHandleSysExitFchmod       = "handle_sys_exit_fchmod"
-	probeProgHandleSysExitFchmodat     = "handle_sys_exit_fchmodat"
-	probeProgHandleSysExitKill         = "handle_sys_exit_kill"
-	probeProgHandleSysExitMemfdCreate  = "handle_sys_exit_memfd_create"
-	probeProgHandleSysExitMmap         = "handle_sys_exit_mmap"
-	probeProgHandleSysExitOpen         = "handle_sys_exit_open"
-	probeProgHandleSysExitOpenat       = "handle_sys_exit_openat"
-	probeProgHandleSysExitPtrace       = "handle_sys_exit_ptrace"
-	probeProgHandleSysExitUnshare      = "handle_sys_exit_unshare"
+	probeMapDrops               = "drops"
+	probeMapEvents              = "events"
+	probeMapPending             = "pending"
+	probeMapPendingScratch      = "pending_scratch"
+	probeProgHandleDoInitModule = "handle_do_init_module"
+	probeProgHandleRawSysEnter  = "handle_raw_sys_enter"
+	probeProgHandleRawSysExit   = "handle_raw_sys_exit"
+	probeProgHandleSchedExec    = "handle_sched_exec"
 )
 
 // loadProbe returns the embedded CollectionSpec for probe.
@@ -106,40 +76,10 @@ type probeSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type probeProgramSpecs struct {
-	HandleDoInitModule        *ebpf.ProgramSpec `ebpf:"handle_do_init_module"`
-	HandleSchedExec           *ebpf.ProgramSpec `ebpf:"handle_sched_exec"`
-	HandleSysEnterBpf         *ebpf.ProgramSpec `ebpf:"handle_sys_enter_bpf"`
-	HandleSysEnterChmod       *ebpf.ProgramSpec `ebpf:"handle_sys_enter_chmod"`
-	HandleSysEnterClone       *ebpf.ProgramSpec `ebpf:"handle_sys_enter_clone"`
-	HandleSysEnterClone3      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_clone3"`
-	HandleSysEnterConnect     *ebpf.ProgramSpec `ebpf:"handle_sys_enter_connect"`
-	HandleSysEnterExecve      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execve"`
-	HandleSysEnterExecveat    *ebpf.ProgramSpec `ebpf:"handle_sys_enter_execveat"`
-	HandleSysEnterFchmod      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_fchmod"`
-	HandleSysEnterFchmodat    *ebpf.ProgramSpec `ebpf:"handle_sys_enter_fchmodat"`
-	HandleSysEnterKill        *ebpf.ProgramSpec `ebpf:"handle_sys_enter_kill"`
-	HandleSysEnterMemfdCreate *ebpf.ProgramSpec `ebpf:"handle_sys_enter_memfd_create"`
-	HandleSysEnterMmap        *ebpf.ProgramSpec `ebpf:"handle_sys_enter_mmap"`
-	HandleSysEnterOpen        *ebpf.ProgramSpec `ebpf:"handle_sys_enter_open"`
-	HandleSysEnterOpenat      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_openat"`
-	HandleSysEnterPtrace      *ebpf.ProgramSpec `ebpf:"handle_sys_enter_ptrace"`
-	HandleSysEnterUnshare     *ebpf.ProgramSpec `ebpf:"handle_sys_enter_unshare"`
-	HandleSysExitBpf          *ebpf.ProgramSpec `ebpf:"handle_sys_exit_bpf"`
-	HandleSysExitChmod        *ebpf.ProgramSpec `ebpf:"handle_sys_exit_chmod"`
-	HandleSysExitClone        *ebpf.ProgramSpec `ebpf:"handle_sys_exit_clone"`
-	HandleSysExitClone3       *ebpf.ProgramSpec `ebpf:"handle_sys_exit_clone3"`
-	HandleSysExitConnect      *ebpf.ProgramSpec `ebpf:"handle_sys_exit_connect"`
-	HandleSysExitExecve       *ebpf.ProgramSpec `ebpf:"handle_sys_exit_execve"`
-	HandleSysExitExecveat     *ebpf.ProgramSpec `ebpf:"handle_sys_exit_execveat"`
-	HandleSysExitFchmod       *ebpf.ProgramSpec `ebpf:"handle_sys_exit_fchmod"`
-	HandleSysExitFchmodat     *ebpf.ProgramSpec `ebpf:"handle_sys_exit_fchmodat"`
-	HandleSysExitKill         *ebpf.ProgramSpec `ebpf:"handle_sys_exit_kill"`
-	HandleSysExitMemfdCreate  *ebpf.ProgramSpec `ebpf:"handle_sys_exit_memfd_create"`
-	HandleSysExitMmap         *ebpf.ProgramSpec `ebpf:"handle_sys_exit_mmap"`
-	HandleSysExitOpen         *ebpf.ProgramSpec `ebpf:"handle_sys_exit_open"`
-	HandleSysExitOpenat       *ebpf.ProgramSpec `ebpf:"handle_sys_exit_openat"`
-	HandleSysExitPtrace       *ebpf.ProgramSpec `ebpf:"handle_sys_exit_ptrace"`
-	HandleSysExitUnshare      *ebpf.ProgramSpec `ebpf:"handle_sys_exit_unshare"`
+	HandleDoInitModule *ebpf.ProgramSpec `ebpf:"handle_do_init_module"`
+	HandleRawSysEnter  *ebpf.ProgramSpec `ebpf:"handle_raw_sys_enter"`
+	HandleRawSysExit   *ebpf.ProgramSpec `ebpf:"handle_raw_sys_exit"`
+	HandleSchedExec    *ebpf.ProgramSpec `ebpf:"handle_sched_exec"`
 }
 
 // probeMapSpecs contains maps before they are loaded into the kernel.
@@ -203,78 +143,18 @@ type probeVariables struct {
 //
 // It can be passed to loadProbeObjects or ebpf.CollectionSpec.LoadAndAssign.
 type probePrograms struct {
-	HandleDoInitModule        *ebpf.Program `ebpf:"handle_do_init_module"`
-	HandleSchedExec           *ebpf.Program `ebpf:"handle_sched_exec"`
-	HandleSysEnterBpf         *ebpf.Program `ebpf:"handle_sys_enter_bpf"`
-	HandleSysEnterChmod       *ebpf.Program `ebpf:"handle_sys_enter_chmod"`
-	HandleSysEnterClone       *ebpf.Program `ebpf:"handle_sys_enter_clone"`
-	HandleSysEnterClone3      *ebpf.Program `ebpf:"handle_sys_enter_clone3"`
-	HandleSysEnterConnect     *ebpf.Program `ebpf:"handle_sys_enter_connect"`
-	HandleSysEnterExecve      *ebpf.Program `ebpf:"handle_sys_enter_execve"`
-	HandleSysEnterExecveat    *ebpf.Program `ebpf:"handle_sys_enter_execveat"`
-	HandleSysEnterFchmod      *ebpf.Program `ebpf:"handle_sys_enter_fchmod"`
-	HandleSysEnterFchmodat    *ebpf.Program `ebpf:"handle_sys_enter_fchmodat"`
-	HandleSysEnterKill        *ebpf.Program `ebpf:"handle_sys_enter_kill"`
-	HandleSysEnterMemfdCreate *ebpf.Program `ebpf:"handle_sys_enter_memfd_create"`
-	HandleSysEnterMmap        *ebpf.Program `ebpf:"handle_sys_enter_mmap"`
-	HandleSysEnterOpen        *ebpf.Program `ebpf:"handle_sys_enter_open"`
-	HandleSysEnterOpenat      *ebpf.Program `ebpf:"handle_sys_enter_openat"`
-	HandleSysEnterPtrace      *ebpf.Program `ebpf:"handle_sys_enter_ptrace"`
-	HandleSysEnterUnshare     *ebpf.Program `ebpf:"handle_sys_enter_unshare"`
-	HandleSysExitBpf          *ebpf.Program `ebpf:"handle_sys_exit_bpf"`
-	HandleSysExitChmod        *ebpf.Program `ebpf:"handle_sys_exit_chmod"`
-	HandleSysExitClone        *ebpf.Program `ebpf:"handle_sys_exit_clone"`
-	HandleSysExitClone3       *ebpf.Program `ebpf:"handle_sys_exit_clone3"`
-	HandleSysExitConnect      *ebpf.Program `ebpf:"handle_sys_exit_connect"`
-	HandleSysExitExecve       *ebpf.Program `ebpf:"handle_sys_exit_execve"`
-	HandleSysExitExecveat     *ebpf.Program `ebpf:"handle_sys_exit_execveat"`
-	HandleSysExitFchmod       *ebpf.Program `ebpf:"handle_sys_exit_fchmod"`
-	HandleSysExitFchmodat     *ebpf.Program `ebpf:"handle_sys_exit_fchmodat"`
-	HandleSysExitKill         *ebpf.Program `ebpf:"handle_sys_exit_kill"`
-	HandleSysExitMemfdCreate  *ebpf.Program `ebpf:"handle_sys_exit_memfd_create"`
-	HandleSysExitMmap         *ebpf.Program `ebpf:"handle_sys_exit_mmap"`
-	HandleSysExitOpen         *ebpf.Program `ebpf:"handle_sys_exit_open"`
-	HandleSysExitOpenat       *ebpf.Program `ebpf:"handle_sys_exit_openat"`
-	HandleSysExitPtrace       *ebpf.Program `ebpf:"handle_sys_exit_ptrace"`
-	HandleSysExitUnshare      *ebpf.Program `ebpf:"handle_sys_exit_unshare"`
+	HandleDoInitModule *ebpf.Program `ebpf:"handle_do_init_module"`
+	HandleRawSysEnter  *ebpf.Program `ebpf:"handle_raw_sys_enter"`
+	HandleRawSysExit   *ebpf.Program `ebpf:"handle_raw_sys_exit"`
+	HandleSchedExec    *ebpf.Program `ebpf:"handle_sched_exec"`
 }
 
 func (p *probePrograms) Close() error {
 	return _ProbeClose(
 		p.HandleDoInitModule,
+		p.HandleRawSysEnter,
+		p.HandleRawSysExit,
 		p.HandleSchedExec,
-		p.HandleSysEnterBpf,
-		p.HandleSysEnterChmod,
-		p.HandleSysEnterClone,
-		p.HandleSysEnterClone3,
-		p.HandleSysEnterConnect,
-		p.HandleSysEnterExecve,
-		p.HandleSysEnterExecveat,
-		p.HandleSysEnterFchmod,
-		p.HandleSysEnterFchmodat,
-		p.HandleSysEnterKill,
-		p.HandleSysEnterMemfdCreate,
-		p.HandleSysEnterMmap,
-		p.HandleSysEnterOpen,
-		p.HandleSysEnterOpenat,
-		p.HandleSysEnterPtrace,
-		p.HandleSysEnterUnshare,
-		p.HandleSysExitBpf,
-		p.HandleSysExitChmod,
-		p.HandleSysExitClone,
-		p.HandleSysExitClone3,
-		p.HandleSysExitConnect,
-		p.HandleSysExitExecve,
-		p.HandleSysExitExecveat,
-		p.HandleSysExitFchmod,
-		p.HandleSysExitFchmodat,
-		p.HandleSysExitKill,
-		p.HandleSysExitMemfdCreate,
-		p.HandleSysExitMmap,
-		p.HandleSysExitOpen,
-		p.HandleSysExitOpenat,
-		p.HandleSysExitPtrace,
-		p.HandleSysExitUnshare,
 	)
 }
 
