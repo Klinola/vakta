@@ -97,6 +97,73 @@ func TestForwarderBatchesAndPosts(t *testing.T) {
 	}
 }
 
+func TestForwarderRetriesOnceWhenFirstAttemptFails(t *testing.T) {
+	// First POST gets reset (simulates kube-proxy with empty endpoint), second
+	// must succeed. Verifies the single-retry behavior covers the hub Service
+	// switchover window without dropping the batch.
+	var (
+		mu       sync.Mutex
+		attempts int
+		received []ingest.WireEvent
+	)
+	gotSecond := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		attempts++
+		n := attempts
+		mu.Unlock()
+		if n == 1 {
+			// Simulate connection reset / 503 from a not-ready hub.
+			http.Error(w, "service not ready", http.StatusServiceUnavailable)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var req ingest.IngestRequest
+		_ = json.Unmarshal(body, &req)
+		mu.Lock()
+		received = append(received, req.Events...)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		select {
+		case <-gotSecond:
+		default:
+			close(gotSecond)
+		}
+	}))
+	defer srv.Close()
+
+	// Speed the retry up for the test (default 500 ms is too slow).
+	orig := retryDelay
+	retryDelay = 10 * time.Millisecond
+	defer func() { retryDelay = orig }()
+
+	f := New(srv.URL, 1, 20*time.Millisecond, 2*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runDone := make(chan struct{})
+	go func() { defer close(runDone); f.Run(ctx) }()
+
+	f.Send(ctx, normalizer.Event{ID: 42, Type: "exec"})
+
+	select {
+	case <-gotSecond:
+	case <-time.After(2 * time.Second):
+		t.Fatal("retry did not deliver event within 2s")
+	}
+
+	cancel()
+	<-runDone
+
+	mu.Lock()
+	defer mu.Unlock()
+	if attempts < 2 {
+		t.Fatalf("expected at least 2 attempts (1 fail + 1 retry), got %d", attempts)
+	}
+	if len(received) == 0 || received[0].ID != 42 {
+		t.Fatalf("expected event ID=42 delivered on retry, received=%+v", received)
+	}
+}
+
 func TestForwarderSendBlocksThenContextEscapes(t *testing.T) {
 	// Send is now blocking (backpressure semantics). Verify it actually blocks
 	// when the buffer is full, and unblocks when the caller's context is

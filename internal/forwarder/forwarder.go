@@ -110,6 +110,14 @@ func (f *Forwarder) Run(ctx context.Context) {
 	}
 }
 
+// retryDelay is how long post waits before its single retry attempt. Sized to
+// cover the ~1s Service endpoint switchover window during hub Deployment
+// rollouts (old endpoint torn down → new pod readiness probe passes → kube-proxy
+// picks up the new backend). One retry, not exponential, because if the hub is
+// down for longer than that the right answer is upstream backpressure, not
+// holding the Run goroutine hostage with longer sleeps. Tests override.
+var retryDelay = 500 * time.Millisecond
+
 func (f *Forwarder) post(ctx context.Context, events []normalizer.Event) {
 	req := ingest.IngestRequest{Events: make([]ingest.WireEvent, len(events))}
 	for i, ev := range events {
@@ -120,21 +128,37 @@ func (f *Forwarder) post(ctx context.Context, events []normalizer.Event) {
 		slog.Warn("forwarder: marshal batch", "err", err, "count", len(events))
 		return
 	}
+
+	if err := f.postOnce(ctx, body); err == nil {
+		return
+	}
+	// First attempt failed (network or 5xx). Wait briefly so the Service
+	// endpoint can catch up to a restarting hub, then try once more. The
+	// first-attempt error is intentionally not logged — the retry almost
+	// always succeeds during a rollout, and double-logging adds noise.
+	select {
+	case <-time.After(retryDelay):
+	case <-ctx.Done():
+		return
+	}
+	if err := f.postOnce(ctx, body); err != nil {
+		slog.Warn("forwarder: post batch", "err", err, "count", len(events))
+	}
+}
+
+func (f *Forwarder) postOnce(ctx context.Context, body []byte) error {
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, f.endpoint, bytes.NewReader(body))
 	if err != nil {
-		slog.Warn("forwarder: build request", "err", err)
-		return
+		return fmt.Errorf("build request: %w", err)
 	}
 	hreq.Header.Set("Content-Type", "application/json")
 	resp, err := f.client.Do(hreq)
 	if err != nil {
-		slog.Warn("forwarder: post batch", "err", err, "count", len(events))
-		return
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
-		slog.Warn("forwarder: hub rejected batch",
-			"status", resp.StatusCode, "count", len(events),
-			"err", fmt.Errorf("status=%d", resp.StatusCode))
+		return fmt.Errorf("status=%d", resp.StatusCode)
 	}
+	return nil
 }
