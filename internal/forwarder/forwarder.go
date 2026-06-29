@@ -15,7 +15,10 @@ import (
 	"github.com/Klinola/vakta/internal/normalizer"
 )
 
-const sendQueueSize = 4096
+// sendQueueSize is the per-agent in-chan buffer. Sized to absorb a ~5s burst at
+// ~6.5k events/s (e.g. k8s rollout-induced syscall storms) without reaching the
+// BPF ringbuf backpressure point. ~16 MB at ~500 B/event.
+const sendQueueSize = 32768
 
 // Forwarder batches normalizer.Events and POSTs them to hubURL/ingest/v1/events.
 // When the hub is unreachable: log slog.Warn, drop the batch, continue.
@@ -50,12 +53,15 @@ func New(hubURL string, batchSize int, flushInterval, httpTimeout time.Duration)
 	}
 }
 
-// Send queues ev into the internal buffer. Non-blocking: drops + warns if full.
-func (f *Forwarder) Send(ev normalizer.Event) {
+// Send queues ev into the internal buffer. Blocks when the buffer is full so
+// backpressure propagates upstream (normalizer → probe ringbuf reader → BPF
+// ringbuf reserve, where the kernel side accumulates atomic drop counters
+// instead of userspace flooding logs). Returns early on ctx cancellation so
+// shutdown is not held up by a stalled hub.
+func (f *Forwarder) Send(ctx context.Context, ev normalizer.Event) {
 	select {
 	case f.in <- ev:
-	default:
-		slog.Warn("forwarder: queue full, dropping event", "id", ev.ID, "type", ev.Type)
+	case <-ctx.Done():
 	}
 }
 

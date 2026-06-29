@@ -57,7 +57,7 @@ func TestForwarderBatchesAndPosts(t *testing.T) {
 	}()
 
 	for i := 0; i < 3; i++ {
-		f.Send(normalizer.Event{
+		f.Send(ctx, normalizer.Event{
 			ID:   uint64(i + 1),
 			Ts:   time.Now(),
 			Type: "exec",
@@ -97,11 +97,38 @@ func TestForwarderBatchesAndPosts(t *testing.T) {
 	}
 }
 
-func TestForwarderQueueFullDrops(t *testing.T) {
-	// Use a non-existent server; Send must not block when queue fills.
+func TestForwarderSendBlocksThenContextEscapes(t *testing.T) {
+	// Send is now blocking (backpressure semantics). Verify it actually blocks
+	// when the buffer is full, and unblocks when the caller's context is
+	// cancelled — so shutdown is never held up by a stalled hub.
 	f := New("http://127.0.0.1:1", 50, time.Second, 100*time.Millisecond)
-	// Don't run f — just keep pushing past the buffer to ensure non-blocking.
-	for i := 0; i < sendQueueSize+10; i++ {
-		f.Send(normalizer.Event{ID: uint64(i)})
+
+	// Don't run f → the in chan never drains. Fill it exactly to capacity.
+	bgCtx := context.Background()
+	for i := 0; i < sendQueueSize; i++ {
+		f.Send(bgCtx, normalizer.Event{ID: uint64(i)})
+	}
+
+	// Next Send must block on a full chan, then return when ctx is cancelled.
+	ctx, cancel := context.WithCancel(context.Background())
+	doneCh := make(chan struct{})
+	go func() {
+		f.Send(ctx, normalizer.Event{ID: 9999})
+		close(doneCh)
+	}()
+
+	// Confirm it's actually blocked (not racing through).
+	select {
+	case <-doneCh:
+		t.Fatal("Send returned before ctx cancel — buffer not actually full or not blocking")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	cancel()
+
+	select {
+	case <-doneCh:
+	case <-time.After(time.Second):
+		t.Fatal("Send did not return within 1s after ctx cancel")
 	}
 }

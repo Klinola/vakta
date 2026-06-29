@@ -275,7 +275,7 @@ func runAgentForwarder(parent context.Context, cfg *config.Config, host string) 
 				<-done
 				return errors.New("normalizer channel closed unexpectedly")
 			}
-			f.Send(ev)
+			f.Send(ctx, ev)
 		}
 	}
 }
