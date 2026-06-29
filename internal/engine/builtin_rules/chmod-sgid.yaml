@@ -8,7 +8,7 @@ rules:
     # volumes as part of normal pod lifecycle — exclude both by comm.
     condition: >
       detail.sgid == true &&
-      !event.comm.matches("^(dpkg|apt|apt-get|rpm|yum|dnf|pacman|zypper|emerge|portage|kubelet|k3s-agent|k3s-server|k3s)$")
+      !event.comm.matches("^(dpkg|apt|apt-get|apk|rpm|yum|dnf|pacman|zypper|emerge|portage|kubelet|k3s-agent|k3s-server|k3s)$")
     tags: [persistence, privilege-escalation, T1548.001]
 
   - id: chmod-world-writable-sensitive

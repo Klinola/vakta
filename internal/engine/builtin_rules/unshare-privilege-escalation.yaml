@@ -15,7 +15,8 @@ rules:
     severity: warning
     source: ebpf
     event_type: UNSHARE
+    # k3s-agent/k3s-server: create pod network namespaces as part of pod sandbox setup
     condition: >
       (detail.unshare_flags / 1073741824) % 2 == 1 &&
-      !event.comm.matches("^(runc|containerd|docker|podman|ip|unshare)$")
+      !event.comm.matches("^(runc|containerd|docker|podman|ip|unshare|k3s|k3s-agent|k3s-server|slirp4netns)$")
     tags: [defense-evasion, T1599]
