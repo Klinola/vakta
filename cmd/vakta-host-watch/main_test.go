@@ -619,14 +619,28 @@ func TestRunLoopContinuingAlertAfterCooldown(t *testing.T) {
 	st, _ := openStore(cfg.DBPath)
 	defer st.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
-	defer cancel()
-	runLoop(ctx, cfg, fake, st, newEvaluator(cfg), n, "test-host")
+	// Poll for ≥2 TG alerts instead of relying on a fixed ctx timeout. CI runners
+	// (single vCPU GitHub Actions hosts) can take longer than the wall-clock
+	// minimum (initial fire + cooldown + next sample) to deliver the second alert,
+	// so a fixed 1s ctx timeout was flaky. We cap at 5s; on a healthy host the
+	// loop completes in well under 1s.
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		runLoop(ctx, cfg, fake, st, newEvaluator(cfg), n, "test-host")
+		close(done)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && atomic.LoadInt32(&hits) < 2 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
 
 	mu.Lock()
 	defer mu.Unlock()
 	if len(seen) < 2 {
-		t.Fatalf("expected ≥2 alerts (initial + continuing post-cooldown), got %d", len(seen))
+		t.Fatalf("expected ≥2 alerts (initial + continuing post-cooldown), got %d within 5s", len(seen))
 	}
 	if !strings.Contains(seen[len(seen)-1], "continuing") {
 		t.Errorf("last alert should be marked continuing: %s", seen[len(seen)-1])
