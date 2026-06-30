@@ -4,9 +4,15 @@ rules:
     severity: critical
     source: ebpf
     event_type: OPEN
+    # event.uid is the REAL UID (bpf_get_current_uid_gid returns real UID per kernel semantics).
+    # Setuid-root binaries (sudo, su, passwd, etc.) run with real UID = invoking user (non-zero)
+    # but effective UID = 0. Reading /etc/shadow is standard PAM password verification — not an
+    # attack. Exclude known setuid auth tools by comm. Real attackers reading /etc/shadow directly
+    # (e.g. via `cat`, `bash`, `python3`) will not match these comms and will still alert.
     condition: >
       (detail.path == "/etc/shadow" || detail.path == "/etc/gshadow") &&
-      event.uid != 0
+      event.uid != 0 &&
+      !event.comm.matches("^(sudo|su|pkexec|doas|passwd|chpasswd|chsh|chfn|usermod|unix_chkpwd|unix_update)$")
     tags: [credential-access, T1003.008]
 
   - id: open-ssh-private-key
