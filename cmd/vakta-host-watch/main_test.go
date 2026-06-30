@@ -1,9 +1,14 @@
 package main
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -380,5 +385,118 @@ func TestEvaluatorCooldown(t *testing.T) {
 	}
 	if !strings.Contains(reason3, "continuing") {
 		t.Errorf("post-cooldown reason should include 'continuing': %q", reason3)
+	}
+}
+
+func TestNotifierFormatMessage(t *testing.T) {
+	sm := Sample{
+		Ts: 1719750900, Load1: 39.6, VmstatWA: 74,
+		MemUsedMB: 6500, SwapUsedMB: 2002, SwapSiKBPerSec: 80, VmstatB: 27,
+		TopProcs: []TopProc{
+			{PID: 1, Name: "gopls", RSSKB: 364068, SwapKB: 562156},
+			{PID: 2, Name: "claude.exe", RSSKB: 345404, SwapKB: 81072},
+		},
+	}
+	msg := formatTGMessage("worker", sm, "load1>20 sustained 3 samples")
+	for _, s := range []string{"worker", "load=39.6", "wa=74", "swap=", "gopls", "claude.exe", "load1>20"} {
+		if !strings.Contains(msg, s) {
+			t.Errorf("message missing %q: %s", s, msg)
+		}
+	}
+}
+
+func TestNotifierPostsToTG(t *testing.T) {
+	var hits int32
+	var seenChatID string
+	var seenText string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		body, _ := io.ReadAll(r.Body)
+		v, _ := url.ParseQuery(string(body))
+		seenChatID = v.Get("chat_id")
+		seenText = v.Get("text")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	n := &notifier{
+		apiBase: srv.URL,
+		token:   "TOK",
+		chatID:  "CHAT-42",
+		client:  srv.Client(),
+		// retryDelays tighter for test
+		retryDelays: []time.Duration{1 * time.Millisecond},
+	}
+	if err := n.send("hello"); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if hits != 1 {
+		t.Errorf("hits=%d, want 1", hits)
+	}
+	if seenChatID != "CHAT-42" {
+		t.Errorf("chat_id=%q", seenChatID)
+	}
+	if seenText != "hello" {
+		t.Errorf("text=%q", seenText)
+	}
+}
+
+func TestNotifierRetriesOn5xx(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c := atomic.AddInt32(&hits, 1)
+		if c < 3 {
+			w.WriteHeader(500)
+			return
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	n := &notifier{
+		apiBase: srv.URL, token: "TOK", chatID: "C",
+		client: srv.Client(),
+		retryDelays: []time.Duration{
+			1 * time.Millisecond, 1 * time.Millisecond, 1 * time.Millisecond,
+		},
+	}
+	if err := n.send("hi"); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if hits != 3 {
+		t.Errorf("expected 3 attempts (2 fails + 1 success), got %d", hits)
+	}
+}
+
+func TestNotifierDropsAfterMaxRetries(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(500)
+	}))
+	defer srv.Close()
+
+	n := &notifier{
+		apiBase: srv.URL, token: "TOK", chatID: "C",
+		client: srv.Client(),
+		retryDelays: []time.Duration{
+			1 * time.Millisecond, 1 * time.Millisecond, 1 * time.Millisecond,
+		},
+	}
+	err := n.send("hi")
+	if err == nil {
+		t.Error("expected error after exhausting retries")
+	}
+	if hits != 4 { // initial + 3 retries
+		t.Errorf("expected 4 attempts, got %d", hits)
+	}
+}
+
+func TestNotifierEmptyTokenIsNoop(t *testing.T) {
+	n := &notifier{token: "", chatID: ""}
+	if err := n.send("hi"); err != nil {
+		t.Errorf("empty-token send should be no-op, got error: %v", err)
 	}
 }

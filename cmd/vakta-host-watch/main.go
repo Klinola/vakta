@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -546,4 +549,72 @@ func (e *evaluator) Check(samples []Sample, now time.Time) (bool, string) {
 		r = "(continuing) " + r
 	}
 	return true, r
+}
+
+// --- Notifier (Telegram) ---
+
+type notifier struct {
+	apiBase     string  // default https://api.telegram.org — overridable in tests
+	token       string
+	chatID      string
+	client      *http.Client
+	retryDelays []time.Duration
+}
+
+func newNotifier(cfg Config) *notifier {
+	return &notifier{
+		apiBase: "https://api.telegram.org",
+		token:   cfg.Telegram.BotToken,
+		chatID:  cfg.Telegram.ChatID,
+		client:  &http.Client{Timeout: 5 * time.Second},
+		retryDelays: []time.Duration{
+			1 * time.Second, 2 * time.Second, 4 * time.Second,
+		},
+	}
+}
+
+func (n *notifier) send(text string) error {
+	if n.token == "" || n.chatID == "" {
+		return nil // no-op when not configured
+	}
+	endpoint := fmt.Sprintf("%s/bot%s/sendMessage", n.apiBase, n.token)
+	form := url.Values{
+		"chat_id": {n.chatID},
+		"text":    {text},
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= len(n.retryDelays); attempt++ {
+		if attempt > 0 {
+			time.Sleep(n.retryDelays[attempt-1])
+		}
+		resp, err := n.client.PostForm(endpoint, form)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil
+		}
+		lastErr = fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return fmt.Errorf("tg send failed after %d attempts: %w", len(n.retryDelays)+1, lastErr)
+}
+
+func formatTGMessage(host string, s Sample, reason string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "[host-watch] %s load=%.1f wa=%d%% swap=%dM/used si=%dKB/s b=%d\n",
+		host, s.Load1, s.VmstatWA, s.SwapUsedMB, s.SwapSiKBPerSec, s.VmstatB)
+	b.WriteString("Top RSS+swap:\n")
+	for i, p := range s.TopProcs {
+		if i >= 3 {
+			break
+		}
+		fmt.Fprintf(&b, "  %-16s %dMB+%dMB\n", p.Name, p.RSSKB/1024, p.SwapKB/1024)
+	}
+	fmt.Fprintf(&b, "Reason: %s\n", reason)
+	fmt.Fprintf(&b, "At %s UTC", time.Unix(s.Ts, 0).UTC().Format("2006-01-02 15:04:05"))
+	return b.String()
 }
