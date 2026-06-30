@@ -266,3 +266,119 @@ func TestStoreInsertSurvivesEmptyTopProcs(t *testing.T) {
 		t.Error("expected Ts=1")
 	}
 }
+
+func TestRingBufferFIFO(t *testing.T) {
+	r := newRingBuffer(3)
+	r.Push(Sample{Ts: 1})
+	r.Push(Sample{Ts: 2})
+	r.Push(Sample{Ts: 3})
+	got := r.Snapshot()
+	if len(got) != 3 || got[0].Ts != 1 || got[2].Ts != 3 {
+		t.Errorf("snapshot order: %+v", got)
+	}
+	r.Push(Sample{Ts: 4})
+	got = r.Snapshot()
+	if len(got) != 3 || got[0].Ts != 2 || got[2].Ts != 4 {
+		t.Errorf("after 4th push: %+v", got)
+	}
+}
+
+func TestRingBufferNotFullYet(t *testing.T) {
+	r := newRingBuffer(3)
+	r.Push(Sample{Ts: 1})
+	got := r.Snapshot()
+	if len(got) != 1 || got[0].Ts != 1 {
+		t.Errorf("Snapshot of partial ring: %+v", got)
+	}
+}
+
+func TestEvaluatorFiresLoadHighSustained(t *testing.T) {
+	cfg := defaultConfig()
+	e := newEvaluator(cfg)
+	// 3 samples all load1 > 20.
+	samples := []Sample{
+		{Ts: 100, Load1: 25},
+		{Ts: 160, Load1: 30},
+		{Ts: 220, Load1: 28},
+	}
+	fire, reason := e.Check(samples, time.Unix(220, 0))
+	if !fire {
+		t.Fatalf("expected fire, reason=%q", reason)
+	}
+	if !strings.Contains(reason, "load1") {
+		t.Errorf("reason should mention load1: %q", reason)
+	}
+}
+
+func TestEvaluatorDoesNotFireOnSingleSpike(t *testing.T) {
+	cfg := defaultConfig()
+	e := newEvaluator(cfg)
+	// Only 1 of 3 samples is > 20.
+	samples := []Sample{
+		{Ts: 100, Load1: 5},
+		{Ts: 160, Load1: 30},
+		{Ts: 220, Load1: 7},
+	}
+	fire, _ := e.Check(samples, time.Unix(220, 0))
+	if fire {
+		t.Error("single spike should not fire")
+	}
+}
+
+func TestEvaluatorFiresSwapThrashSignature(t *testing.T) {
+	cfg := defaultConfig()
+	e := newEvaluator(cfg)
+	samples := []Sample{
+		{Ts: 100, Load1: 5, SwapSiKBPerSec: 10, VmstatB: 15},
+		{Ts: 160, Load1: 4, SwapSiKBPerSec: 5, VmstatB: 20},
+		{Ts: 220, Load1: 3, SwapSiKBPerSec: 8, VmstatB: 12},
+	}
+	fire, reason := e.Check(samples, time.Unix(220, 0))
+	if !fire {
+		t.Fatalf("expected fire, reason=%q", reason)
+	}
+	if !strings.Contains(reason, "swap") {
+		t.Errorf("reason should mention swap: %q", reason)
+	}
+}
+
+func TestEvaluatorNotEnoughSamples(t *testing.T) {
+	cfg := defaultConfig()
+	e := newEvaluator(cfg)
+	samples := []Sample{{Ts: 100, Load1: 100}}
+	fire, _ := e.Check(samples, time.Unix(100, 0))
+	if fire {
+		t.Error("fewer than window_samples should not fire")
+	}
+}
+
+func TestEvaluatorCooldown(t *testing.T) {
+	cfg := defaultConfig()
+	e := newEvaluator(cfg)
+	hot := []Sample{
+		{Ts: 100, Load1: 25}, {Ts: 160, Load1: 25}, {Ts: 220, Load1: 25},
+	}
+	fire1, _ := e.Check(hot, time.Unix(220, 0))
+	if !fire1 {
+		t.Fatal("first check should fire")
+	}
+	// 2 minutes later, still hot — within 3min cooldown.
+	hot2 := []Sample{
+		{Ts: 280, Load1: 25}, {Ts: 340, Load1: 25}, {Ts: 400, Load1: 25},
+	}
+	fire2, _ := e.Check(hot2, time.Unix(400, 0))
+	if fire2 {
+		t.Error("second check within cooldown should NOT fire")
+	}
+	// 4 minutes later (past 3min cooldown), still hot — should fire as continuing.
+	hot3 := []Sample{
+		{Ts: 460, Load1: 25}, {Ts: 520, Load1: 25}, {Ts: 580, Load1: 25},
+	}
+	fire3, reason3 := e.Check(hot3, time.Unix(580, 0))
+	if !fire3 {
+		t.Fatal("after cooldown expired, should fire again")
+	}
+	if !strings.Contains(reason3, "continuing") {
+		t.Errorf("post-cooldown reason should include 'continuing': %q", reason3)
+	}
+}

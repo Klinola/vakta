@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -452,4 +453,97 @@ LIMIT ?`, n)
 func (s *Store) Prune(beforeTs int64) error {
 	_, err := s.db.Exec(`DELETE FROM samples WHERE ts < ?`, beforeTs)
 	return err
+}
+
+// --- RingBuffer ---
+
+type ringBuffer struct {
+	mu   sync.Mutex
+	data []Sample
+	size int
+}
+
+func newRingBuffer(size int) *ringBuffer {
+	return &ringBuffer{data: make([]Sample, 0, size), size: size}
+}
+
+func (r *ringBuffer) Push(s Sample) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.data) < r.size {
+		r.data = append(r.data, s)
+		return
+	}
+	copy(r.data, r.data[1:])
+	r.data[r.size-1] = s
+}
+
+func (r *ringBuffer) Snapshot() []Sample {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]Sample, len(r.data))
+	copy(out, r.data)
+	return out
+}
+
+// --- Evaluator ---
+
+type evaluator struct {
+	cfg        Config
+	mu         sync.Mutex
+	lastFireTs int64 // unix seconds when we last fired; 0 = never
+}
+
+func newEvaluator(cfg Config) *evaluator {
+	return &evaluator{cfg: cfg}
+}
+
+// Check returns (fire, reason). reason is a short string explaining what
+// matched, suitable for inclusion in the TG message. Cooldown applies
+// regardless of whether the caller succeeds in delivering the alert.
+func (e *evaluator) Check(samples []Sample, now time.Time) (bool, string) {
+	if len(samples) < e.cfg.Thresholds.WindowSamples {
+		return false, ""
+	}
+	window := samples[len(samples)-e.cfg.Thresholds.WindowSamples:]
+
+	loadHit := true
+	swapHit := true
+	for _, s := range window {
+		if s.Load1 <= e.cfg.Thresholds.Load1 {
+			loadHit = false
+		}
+		if !(s.SwapSiKBPerSec >= e.cfg.Thresholds.SwapSiMinKBPerSec &&
+			s.VmstatB >= e.cfg.Thresholds.VmstatBMin) {
+			swapHit = false
+		}
+	}
+
+	if !loadHit && !swapHit {
+		return false, ""
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.lastFireTs != 0 && now.Unix()-e.lastFireTs <= int64(e.cfg.Cooldown.Seconds()) {
+		return false, ""
+	}
+
+	continuing := e.lastFireTs != 0
+	e.lastFireTs = now.Unix()
+
+	var reasons []string
+	if loadHit {
+		reasons = append(reasons, fmt.Sprintf("load1>%.0f sustained %d samples",
+			e.cfg.Thresholds.Load1, e.cfg.Thresholds.WindowSamples))
+	}
+	if swapHit {
+		reasons = append(reasons, fmt.Sprintf("swap_si>0 AND vmstat_b≥%d sustained %d samples",
+			e.cfg.Thresholds.VmstatBMin, e.cfg.Thresholds.WindowSamples))
+	}
+	r := strings.Join(reasons, " + ")
+	if continuing {
+		r = "(continuing) " + r
+	}
+	return true, r
 }
