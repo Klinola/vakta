@@ -200,3 +200,69 @@ func TestSamplerRead(t *testing.T) {
 		t.Error("TopProcs empty")
 	}
 }
+
+func TestStoreInsertAndQuery(t *testing.T) {
+	st, err := openStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	samples := []Sample{
+		{Ts: 100, Load1: 1.0, TopProcs: []TopProc{{PID: 1, Name: "init", RSSKB: 100}}},
+		{Ts: 200, Load1: 5.0},
+		{Ts: 300, Load1: 25.0},
+	}
+	for _, s := range samples {
+		if err := st.Insert(s); err != nil {
+			t.Fatalf("Insert %+v: %v", s, err)
+		}
+	}
+
+	got, err := st.QueryRecent(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("QueryRecent(2) returned %d, want 2", len(got))
+	}
+	// Most recent first.
+	if got[0].Ts != 300 || got[1].Ts != 200 {
+		t.Errorf("ordering wrong: %v", []int64{got[0].Ts, got[1].Ts})
+	}
+	if got[1].TopProcs == nil {
+		t.Logf("note: empty top_procs deserialized to nil slice — acceptable")
+	}
+}
+
+func TestStorePrune(t *testing.T) {
+	st, _ := openStore(":memory:")
+	defer st.Close()
+	for _, ts := range []int64{100, 200, 300, 400} {
+		_ = st.Insert(Sample{Ts: ts})
+	}
+	if err := st.Prune(250); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.QueryRecent(10)
+	if len(got) != 2 {
+		t.Errorf("after Prune(250), expected 2 rows, got %d", len(got))
+	}
+	for _, s := range got {
+		if s.Ts < 250 {
+			t.Errorf("Prune left row Ts=%d", s.Ts)
+		}
+	}
+}
+
+func TestStoreInsertSurvivesEmptyTopProcs(t *testing.T) {
+	st, _ := openStore(":memory:")
+	defer st.Close()
+	if err := st.Insert(Sample{Ts: 1, TopProcs: nil}); err != nil {
+		t.Fatalf("Insert with nil TopProcs failed: %v", err)
+	}
+	got, _ := st.QueryRecent(1)
+	if got[0].Ts != 1 {
+		t.Error("expected Ts=1")
+	}
+}

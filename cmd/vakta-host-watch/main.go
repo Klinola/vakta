@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	_ "modernc.org/sqlite"
 )
 
 func main() {
@@ -361,4 +363,87 @@ func (s *Sampler) Read() (Sample, error) {
 func (s Sample) TopProcsJSON() string {
 	b, _ := json.Marshal(s.TopProcs)
 	return string(b)
+}
+
+// --- Store (SQLite) ---
+
+type Store struct {
+	db *sql.DB
+}
+
+const sqlSchema = `
+CREATE TABLE IF NOT EXISTS samples (
+    ts            INTEGER PRIMARY KEY,
+    load1         REAL    NOT NULL,
+    load5         REAL    NOT NULL,
+    load15        REAL    NOT NULL,
+    mem_used_mb   INTEGER NOT NULL,
+    swap_used_mb  INTEGER NOT NULL,
+    swap_si_kb_s  INTEGER NOT NULL,
+    vmstat_b      INTEGER NOT NULL,
+    vmstat_wa     INTEGER NOT NULL,
+    top_procs     TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts);
+`
+
+func openStore(path string) (*Store, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := db.Exec(sqlSchema); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return &Store{db: db}, nil
+}
+
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
+func (s *Store) Insert(sm Sample) error {
+	procsJSON := sm.TopProcsJSON()
+	if procsJSON == "" {
+		procsJSON = "[]"
+	}
+	_, err := s.db.Exec(`
+INSERT INTO samples (ts, load1, load5, load15, mem_used_mb, swap_used_mb, swap_si_kb_s, vmstat_b, vmstat_wa, top_procs)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(ts) DO NOTHING`,
+		sm.Ts, sm.Load1, sm.Load5, sm.Load15, sm.MemUsedMB, sm.SwapUsedMB,
+		sm.SwapSiKBPerSec, sm.VmstatB, sm.VmstatWA, procsJSON,
+	)
+	return err
+}
+
+func (s *Store) QueryRecent(n int) ([]Sample, error) {
+	rows, err := s.db.Query(`
+SELECT ts, load1, load5, load15, mem_used_mb, swap_used_mb, swap_si_kb_s, vmstat_b, vmstat_wa, top_procs
+FROM samples
+ORDER BY ts DESC
+LIMIT ?`, n)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Sample
+	for rows.Next() {
+		var sm Sample
+		var procsJSON string
+		if err := rows.Scan(&sm.Ts, &sm.Load1, &sm.Load5, &sm.Load15,
+			&sm.MemUsedMB, &sm.SwapUsedMB, &sm.SwapSiKBPerSec,
+			&sm.VmstatB, &sm.VmstatWA, &procsJSON); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(procsJSON), &sm.TopProcs)
+		out = append(out, sm)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Prune(beforeTs int64) error {
+	_, err := s.db.Exec(`DELETE FROM samples WHERE ts < ?`, beforeTs)
+	return err
 }
