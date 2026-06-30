@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -498,5 +500,122 @@ func TestNotifierEmptyTokenIsNoop(t *testing.T) {
 	n := &notifier{token: "", chatID: ""}
 	if err := n.send("hi"); err != nil {
 		t.Errorf("empty-token send should be no-op, got error: %v", err)
+	}
+}
+
+func TestRunLoopFiresOnceThenCools(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SampleInterval = 50 * time.Millisecond
+	cfg.Cooldown = 200 * time.Millisecond
+	cfg.DBPath = ":memory:" // avoid fsync blocking the loop during the test window
+	cfg.Thresholds.WindowSamples = 2
+
+	var tgHits int32
+	var mu sync.Mutex
+	var lastBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&tgHits, 1)
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		lastBody = string(body)
+		mu.Unlock()
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	cfg.Telegram.BotToken = "TOK"
+	cfg.Telegram.ChatID = "C"
+
+	// Override the sampler to feed synthetic always-over-threshold samples.
+	fakeSamples := newFakeSampler([]Sample{
+		{Load1: 50}, {Load1: 50}, {Load1: 50}, {Load1: 50}, {Load1: 50},
+	})
+
+	n := newNotifier(cfg)
+	n.apiBase = srv.URL
+	// Explicit no-proxy function so HTTP_PROXY env var doesn't route loopback
+	// requests through Claude's outbound proxy (which can't reach 127.0.0.1).
+	n.client = &http.Client{
+		Transport: &http.Transport{
+			Proxy: func(*http.Request) (*url.URL, error) { return nil, nil },
+		},
+		Timeout: 2 * time.Second,
+	}
+	n.retryDelays = []time.Duration{1 * time.Millisecond}
+
+	st, err := openStore(cfg.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	runLoop(ctx, cfg, fakeSamples, st, newEvaluator(cfg), n, "test-host")
+
+	hits := atomic.LoadInt32(&tgHits)
+	if hits < 1 {
+		t.Fatalf("expected at least 1 TG alert, got %d", hits)
+	}
+	if hits > 3 {
+		t.Errorf("too many alerts (cooldown not respected): %d", hits)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !strings.Contains(lastBody, "load1") {
+		t.Errorf("TG payload should mention reason: %s", lastBody)
+	}
+
+	// Verify samples were also persisted to SQLite.
+	rows, _ := st.QueryRecent(20)
+	if len(rows) < 2 {
+		t.Errorf("expected ≥2 samples in DB, got %d", len(rows))
+	}
+}
+
+// fakeSampler implements the sample-source interface used by runLoop in tests.
+// It returns sequential canned samples and timestamps them with time.Now().
+type fakeSampler struct {
+	mu   sync.Mutex
+	idx  int
+	data []Sample
+}
+
+func newFakeSampler(data []Sample) *fakeSampler {
+	return &fakeSampler{data: data}
+}
+
+func (f *fakeSampler) Read() (Sample, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.data) == 0 {
+		return Sample{Ts: time.Now().Unix()}, nil
+	}
+	s := f.data[f.idx%len(f.data)]
+	f.idx++
+	s.Ts = time.Now().Unix() + int64(f.idx) // monotonic across calls
+	return s, nil
+}
+
+func TestRunLoopRespectsContextCancel(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SampleInterval = 10 * time.Millisecond
+	cfg.DBPath = ":memory:"
+	st, _ := openStore(cfg.DBPath)
+	defer st.Close()
+	n := newNotifier(cfg) // no TG configured → no-op
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already canceled
+	done := make(chan struct{})
+	go func() {
+		runLoop(ctx, cfg, NewSampler(), st, newEvaluator(cfg), n, "h")
+		close(done)
+	}()
+	select {
+	case <-done:
+		// good
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("runLoop did not honor canceled context")
 	}
 }

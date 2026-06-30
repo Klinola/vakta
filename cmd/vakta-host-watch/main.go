@@ -5,29 +5,136 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
 	_ "modernc.org/sqlite"
 )
 
+// sampleSource is what runLoop needs from any sampler (real or fake).
+type sampleSource interface {
+	Read() (Sample, error)
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	log.Println("vakta-host-watch starting (scaffold)")
-	os.Exit(0)
+
+	cfgPath := flag.String("config", expandHome("~/.config/vakta/host-watch.yaml"), "config path")
+	flag.Parse()
+
+	cfg, err := loadConfig(*cfgPath)
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	if cfg.Telegram.BotToken == "" || cfg.Telegram.ChatID == "" {
+		log.Println("WARN: telegram bot_token/chat_id not configured; forensic log only")
+	}
+
+	if dir := filepath.Dir(cfg.DBPath); dir != "" && dir != "." {
+		_ = os.MkdirAll(dir, 0o755)
+	}
+	store, err := openStore(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("openStore %s: %v", cfg.DBPath, err)
+	}
+	defer func() { _ = store.Close() }()
+
+	host, _ := os.Hostname()
+	log.Printf("vakta-host-watch starting: host=%s interval=%v db=%s",
+		host, cfg.SampleInterval, cfg.DBPath)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	go pruneLoop(ctx, cfg, store)
+	runLoop(ctx, cfg, NewSampler(), store, newEvaluator(cfg), newNotifier(cfg), host)
+}
+
+func runLoop(
+	ctx context.Context,
+	cfg Config,
+	sampler sampleSource,
+	store *Store,
+	evaluator *evaluator,
+	notif *notifier,
+	host string,
+) {
+	ring := newRingBuffer(cfg.Thresholds.WindowSamples)
+	t := time.NewTicker(cfg.SampleInterval)
+	defer t.Stop()
+
+	doOne := func() {
+		sm, err := sampler.Read()
+		if err != nil {
+			log.Printf("sampler: %v", err)
+			return
+		}
+		// INVARIANT: ring push BEFORE store insert. DB failure must not
+		// drop evaluator input.
+		ring.Push(sm)
+		if err := store.Insert(sm); err != nil {
+			log.Printf("store insert: %v", err)
+		}
+		fire, reason := evaluator.Check(ring.Snapshot(), time.Now())
+		if !fire {
+			return
+		}
+		msg := formatTGMessage(host, sm, reason)
+		if err := notif.send(msg); err != nil {
+			log.Printf("notifier: %v", err)
+		}
+	}
+
+	// Check cancellation before the initial sample so a pre-canceled context
+	// returns immediately without touching /proc or the store.
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+	doOne() // initial sample at t=0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			doOne()
+		}
+	}
+}
+
+func pruneLoop(ctx context.Context, cfg Config, store *Store) {
+	t := time.NewTicker(24 * time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			cutoff := time.Now().Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour).Unix()
+			if err := store.Prune(cutoff); err != nil {
+				log.Printf("prune: %v", err)
+			}
+		}
+	}
 }
 
 type Config struct {
