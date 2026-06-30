@@ -4,11 +4,13 @@ rules:
     severity: critical
     source: ebpf
     event_type: MEMFD
-    # chrome/chromium/chrome-headless excluded: creates anonymous memfd (empty name) for JIT
-    # code pages; chrome-headless is the Linux process name for headless Chrome (e.g. Playwright)
+    # JIT runtimes excluded: V8 (node, claude CLI, electron), JVM (java, jvm), .NET (dotnet/mono),
+    # Erlang (beam.smp), LuaJIT all use memfd_create for JIT-compiled code segments —
+    # same root cause as mmap-rwx-mapping exclusions.
+    # chrome/chromium/chrome-headless: Playwright headless Chrome for CI testing.
     condition: >
       (detail.name == "" || detail.name.matches(".*(anon|exec|payload|stage|shell|drop|mem|load).*")) &&
-      !event.comm.matches("^(chrome|chromium|chrome_crashpad|chrome-headless|ThreadPoolSingl)$")
+      !event.comm.matches("^(claude|claude\\.exe|node|electron|java|jvm|dotnet|mono|beam\\.smp|luajit|chrome|chromium|chrome_crashpad|chrome-headless|ThreadPoolSingl)$")
     tags: [defense-evasion, execution, fileless, T1620]
 
   - id: memfd-create-any-nonstandard
@@ -16,8 +18,10 @@ rules:
     severity: high
     source: ebpf
     event_type: MEMFD
-    # chrome/chromium/chrome-headless excluded: Playwright/Chrome use memfd for JIT compilation
-    # sandboxing; chrome-headless is the Linux process name for headless Chrome in CI/testing
+    # JIT runtimes and scripting engines excluded: V8 (node, claude CLI, electron), JVM (java, jvm),
+    # .NET (dotnet/mono), Erlang (beam.smp), LuaJIT, wine/qemu/kvm VMs — all use memfd_create
+    # for JIT or dynamic code generation; aligned with mmap-rwx-mapping exclusions.
+    # chrome/chromium/chrome-headless: Playwright headless Chrome for CI testing.
     condition: >
-      !event.comm.matches("^(java|node|python[0-9.]*|ruby|perl|php|go|dotnet|mono|wine|qemu|kvm|jvm|chrome|chromium|chrome_crashpad|chrome-headless|ThreadPoolSingl)$")
+      !event.comm.matches("^(java|node|python[0-9.]*|ruby|perl|php|go|dotnet|mono|wine|qemu|kvm|jvm|claude|claude\\.exe|electron|beam\\.smp|luajit|chrome|chromium|chrome_crashpad|chrome-headless|ThreadPoolSingl)$")
     tags: [defense-evasion, execution, fileless, T1620]

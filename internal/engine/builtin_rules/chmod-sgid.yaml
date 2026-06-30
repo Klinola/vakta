@@ -19,8 +19,16 @@ rules:
     severity: high
     source: ebpf
     event_type: CHMOD
+    # mode % 4 >= 2 correctly isolates the world-write bit (bit 1 of the "other" 3-bit group):
+    #   mode % 8 gives the 3 world bits (rwx); within those, % 4 drops the execute bit and >= 2
+    #   checks if write is set. The old condition (% 8 >= 2) incorrectly fired on world-read-only
+    #   files (mode=0644 → world_bits=4 → 4 >= 2 = true, but write bit is NOT set).
+    # ldconfig/ldconfig.real excluded: apt/dpkg package installation runs ldconfig to rebuild
+    #   /etc/ld.so.cache; it creates a temp file and fchmod(0644) → triggers the old buggy rule.
+    #   After the % 4 fix this exclusion is belt-and-suspenders; kept for clarity.
     condition: >
-      detail.mode % 8 >= 2 &&
+      detail.mode % 4 >= 2 &&
       (detail.path.matches("^/etc/") || detail.path.matches("^/usr/") ||
-       detail.path.matches("^/bin/") || detail.path.matches("^/sbin/"))
+       detail.path.matches("^/bin/") || detail.path.matches("^/sbin/")) &&
+      !event.comm.matches("^(ldconfig|ldconfig\\.real)$")
     tags: [defense-evasion, persistence, T1222]
