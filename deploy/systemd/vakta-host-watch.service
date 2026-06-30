@@ -1,0 +1,23 @@
+[Unit]
+Description=vakta-host-watch — host overload early-warning + forensic log
+Documentation=https://github.com/Klinola/Taberna/blob/dev/docs/superpowers/specs/2026-06-30-vakta-host-watch-design.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/vakta-host-watch
+Restart=on-failure
+RestartSec=5s
+# Secret env (override per host):
+#   systemctl --user edit vakta-host-watch
+# Then add:
+#   [Service]
+#   Environment="TG_BOT_TOKEN=..."
+#   Environment="TG_CHAT_ID=..."
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

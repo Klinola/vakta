@@ -234,6 +234,19 @@ go generate ./internal/probe/...
 
 ---
 
+## Tools
+
+- **vakta-host-watch** (`cmd/vakta-host-watch/`) — Standalone host overload
+  early-warning daemon. Samples `/proc/{loadavg,vmstat,meminfo}` + top procs
+  every minute, writes to a local SQLite forensic log (~30-40 MB / 30 days),
+  pushes a Telegram alert when sustained overload is detected (default:
+  `load1 > 20` OR swap thrashing signature, both with 3-sample window and
+  3-minute cooldown). Independent of the vakta agent.
+  See [deploy/systemd/vakta-host-watch.service](deploy/systemd/vakta-host-watch.service)
+  for the user-mode systemd unit template.
+
+---
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
