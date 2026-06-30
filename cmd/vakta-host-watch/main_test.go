@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -99,5 +100,103 @@ func TestConfigMissingFileUsesDefaults(t *testing.T) {
 	}
 	if cfg.SampleInterval != 60*time.Second {
 		t.Errorf("expected defaults applied when file missing")
+	}
+}
+
+func TestParseLoadavg(t *testing.T) {
+	body, err := os.ReadFile("testdata/loadavg_busy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l1, l5, l15, err := parseLoadavg(string(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l1 != 39.63 || l5 != 39.50 || l15 != 35.17 {
+		t.Errorf("got load %v %v %v", l1, l5, l15)
+	}
+}
+
+func TestParseVmstatDelta(t *testing.T) {
+	body1, _ := os.ReadFile("testdata/vmstat_sample_1")
+	body2, _ := os.ReadFile("testdata/vmstat_sample_2")
+	s1, err := parseVmstat(string(body1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := parseVmstat(string(body2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s1.PswpIn != 12345 || s2.PswpIn != 12425 {
+		t.Fatalf("pswpin: %d → %d", s1.PswpIn, s2.PswpIn)
+	}
+	// 80 pages × 4KB / 60s = 5 KB/s (using pageSize=4096; on real linux this is correct
+	// for x86_64 default).
+	kbPerSec := swapInKBPerSec(s1, s2, 60*time.Second, 4096)
+	if kbPerSec != 5 {
+		t.Errorf("swap-in KB/s = %d, want 5", kbPerSec)
+	}
+}
+
+func TestParseMeminfo(t *testing.T) {
+	body, _ := os.ReadFile("testdata/meminfo_thrash")
+	mem, err := parseMeminfo(string(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// MemTotal=16367812 KB, MemAvailable=9676128 KB → used = (total - available)/1024 MB ≈ 6535
+	if mem.UsedMB < 6500 || mem.UsedMB > 6600 {
+		t.Errorf("mem.UsedMB = %d, want ~6535", mem.UsedMB)
+	}
+	// SwapTotal-SwapFree = 4194300-2143372 = 2050928 KB ≈ 2002 MB
+	if mem.SwapUsedMB < 1990 || mem.SwapUsedMB > 2010 {
+		t.Errorf("mem.SwapUsedMB = %d, want ~2002", mem.SwapUsedMB)
+	}
+}
+
+func TestReadTopProcsReturnsCurrentProcess(t *testing.T) {
+	// We can't fixture /proc/<pid>/* easily; smoke-test the live reader.
+	procs, err := readTopProcs(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(procs) == 0 {
+		t.Fatal("expected at least one top proc on a live linux system")
+	}
+	// Each entry should have a non-empty name and a non-zero PID.
+	for i, p := range procs {
+		if p.PID <= 0 {
+			t.Errorf("entry %d has PID %d", i, p.PID)
+		}
+		if strings.TrimSpace(p.Name) == "" {
+			t.Errorf("entry %d has empty name", i)
+		}
+	}
+	// Verify ordering: RSS+swap descending.
+	for i := 1; i < len(procs); i++ {
+		prevTotal := procs[i-1].RSSKB + procs[i-1].SwapKB
+		curTotal := procs[i].RSSKB + procs[i].SwapKB
+		if prevTotal < curTotal {
+			t.Errorf("not sorted DESC at i=%d: prev=%d cur=%d", i, prevTotal, curTotal)
+		}
+	}
+}
+
+func TestSamplerRead(t *testing.T) {
+	// Smoke: Sampler.Read() against live /proc should yield a sane Sample.
+	s := NewSampler()
+	first, err := s.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Ts == 0 {
+		t.Error("Ts not set")
+	}
+	if first.Load1 < 0 || first.Load1 > 10000 {
+		t.Errorf("Load1 looks wrong: %v", first.Load1)
+	}
+	if len(first.TopProcs) == 0 {
+		t.Error("TopProcs empty")
 	}
 }
