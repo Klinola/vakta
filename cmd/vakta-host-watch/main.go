@@ -392,6 +392,12 @@ func openStore(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	// SQLite serializes writes through a single OS connection. database/sql's default
+	// pool of unlimited connections lets the runtime open multiple parallel SQLite
+	// handles, which race for the file lock and produce "database is locked" errors
+	// under contention. Pin to 1 connection so the database/sql layer queues writers
+	// for us, matching the pattern in vakta's internal/storage/storage.go.
+	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(sqlSchema); err != nil {
 		_ = db.Close()
 		return nil, err
