@@ -573,6 +573,97 @@ func TestRunLoopFiresOnceThenCools(t *testing.T) {
 	}
 }
 
+func TestRunLoopContinuingAlertAfterCooldown(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SampleInterval = 50 * time.Millisecond
+	cfg.Cooldown = 200 * time.Millisecond
+	cfg.DBPath = ":memory:" // avoid fsync blocking during the test window
+	cfg.Thresholds.WindowSamples = 2
+
+	var hits int32
+	var seen []string
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		body, _ := io.ReadAll(r.Body)
+		v, _ := url.ParseQuery(string(body))
+		mu.Lock()
+		seen = append(seen, v.Get("text"))
+		mu.Unlock()
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	cfg.Telegram.BotToken = "TOK"
+	cfg.Telegram.ChatID = "C"
+
+	// Provide samples to ensure enough iterations for initial fire + cooldown + continuing fire
+	// At 50ms interval: t=0 (initial), t=50, t=100, t=150, t=200, t=250, t=300, t=350, ...
+	// Cooldown=200ms, so: fire at t=0, block t=0-200, can fire again at t>200
+	samples := make([]Sample, 20)
+	for i := range samples {
+		samples[i] = Sample{Load1: 50}
+	}
+	fake := newFakeSampler(samples)
+	n := newNotifier(cfg)
+	n.apiBase = srv.URL
+	n.retryDelays = []time.Duration{1 * time.Millisecond}
+	// Proxy bypass for tests (HTTP_PROXY is set on this box for Anthropic egress only)
+	n.client = &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			Proxy: func(*http.Request) (*url.URL, error) { return nil, nil },
+		},
+	}
+
+	st, _ := openStore(cfg.DBPath)
+	defer st.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	defer cancel()
+	runLoop(ctx, cfg, fake, st, newEvaluator(cfg), n, "test-host")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) < 2 {
+		t.Fatalf("expected ≥2 alerts (initial + continuing post-cooldown), got %d", len(seen))
+	}
+	if !strings.Contains(seen[len(seen)-1], "continuing") {
+		t.Errorf("last alert should be marked continuing: %s", seen[len(seen)-1])
+	}
+}
+
+func TestRunLoopForensicLogPersists(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SampleInterval = 40 * time.Millisecond
+	cfg.DBPath = ":memory:" // in-memory SQLite for test speed
+	cfg.Thresholds.WindowSamples = 5 // high → no fire
+	st, err := openStore(cfg.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	// Provide samples so the loop persists forensic data
+	// At 40ms interval: t=0 (initial), t=40, t=80, t=120, t=160, ...
+	// Run for 300ms to get ~7-8 samples
+	samples := make([]Sample, 15)
+	for i := range samples {
+		samples[i] = Sample{Load1: 1}
+	}
+	fake := newFakeSampler(samples)
+	n := newNotifier(cfg) // no TG configured → no-op
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	runLoop(ctx, cfg, fake, st, newEvaluator(cfg), n, "h")
+
+	rows, _ := st.QueryRecent(100)
+	if len(rows) < 3 {
+		t.Errorf("expected ≥3 forensic samples persisted, got %d", len(rows))
+	}
+}
+
 // fakeSampler implements the sample-source interface used by runLoop in tests.
 // It returns sequential canned samples and timestamps them with time.Now().
 type fakeSampler struct {
