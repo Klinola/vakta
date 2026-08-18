@@ -5,6 +5,9 @@ rules:
     source: ebpf
     event_type: OPEN
     # event.uid is the REAL UID (bpf_get_current_uid_gid returns real UID per kernel semantics).
+    # Deliberately fires on refused opens too (no event.ret guard): a process
+    # that tried to read /etc/shadow and was denied is exactly what this rule
+    # exists to catch. Contrast open-proc-kcore, where failures are pure noise.
     # Setuid-root binaries (sudo, su, passwd, etc.) run with real UID = invoking user (non-zero)
     # but effective UID = 0. Reading /etc/shadow is standard PAM password verification — not an
     # attack. Exclude known setuid auth tools by comm. Real attackers reading /etc/shadow directly
@@ -40,14 +43,32 @@ rules:
     tags: [privilege-escalation, container-escape, T1611]
 
   - id: open-proc-kcore
-    name: /proc/kcore or /proc/kmem opened (kernel memory access)
+    name: Kernel memory opened (/proc/kcore, /proc/kmem, /dev/mem, /dev/kmem)
     severity: critical
     source: ebpf
     event_type: OPEN
-    # runc:[2:INIT] opens /proc/kcore during container namespace init to probe kernel
-    # layout before exec-ing the container process — container runtime, not an attacker.
+    # The name lists every path this matches on purpose: it used to name only
+    # /proc/kcore and /proc/kmem while also matching the two /dev nodes, so a
+    # page read as "someone is reading kernel memory via /proc/kcore" when the
+    # event was actually a refused open of /dev/mem. The alert now carries the
+    # matched path as an annotation too.
+    #
+    # Only successful opens count. A refused open of these paths carries no
+    # signal, and one benign pattern dominates it: util-linux lscpu falls back
+    # to scanning /dev/mem for the SMBIOS table whenever
+    # /sys/firmware/dmi/tables/DMI is unreadable, which is the normal state
+    # inside a container — and containers are not given /dev/mem either, so the
+    # open always fails with ENOENT. That pairing alone produced recurring P0s.
+    #
+    # runc still needs excluding because its open *succeeds*: /proc/kcore is one
+    # of runc's maskedPaths, implemented by bind-mounting /dev/null over it
+    # (verified — inside a container /proc/kcore is a bind mount of a tmpfs
+    # /null), and setting up that mount opens the target. comm is "runc" for the
+    # parent and "runc:[2:INIT]" for the namespace-init child; the old "^runc:"
+    # pattern matched only the child.
     condition: >
       (detail.path == "/proc/kcore" || detail.path == "/proc/kmem" ||
        detail.path == "/dev/mem" || detail.path == "/dev/kmem") &&
-      !event.comm.matches("^runc:")
+      event.ret >= 0 &&
+      !event.comm.matches("^runc($|:)")
     tags: [privilege-escalation, T1055]
