@@ -47,10 +47,7 @@ func newHubCmd() *cobra.Command {
 
 func runHub(parent context.Context, cfg *config.Config) error {
 	configureLogger(cfg.Log)
-	host := cfg.Agent.NodeName
-	if host == "" {
-		host, _ = os.Hostname()
-	}
+	host := resolveHost(cfg.Agent.NodeName)
 
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -100,7 +97,8 @@ func runHub(parent context.Context, cfg *config.Config) error {
 	}
 
 	eventCh := make(chan normalizer.Event, hubEventChannelBuffer)
-	ingestSrv := hub.New(cfg.Hub.IngestAddr, eventCh)
+	ingestSrv := hub.New(cfg.Hub.IngestAddr, eventCh,
+		newDropEvaluator(ctx, eng, am, cfg.Agent.ClusterName))
 	go func() {
 		if err := ingestSrv.Start(); err != nil && err != http.ErrServerClosed {
 			slog.Error("hub: ingest server", "err", err)
@@ -238,24 +236,7 @@ func flushBatch(
 				Tags:     m.Rule.Tags,
 				FiredAt:  m.At,
 			})
-			amAlerts = append(amAlerts, alertmanager.Alert{
-				Labels: map[string]string{
-					"alertname":      m.Rule.Name,
-					"severity":       severityToP(m.Rule.Severity),
-					"vakta_severity": m.Rule.Severity,
-					"rule_id":        m.Rule.ID,
-					"event_type":     ev.Type,
-					"cluster":        cluster,
-					"node":           ev.Host,
-				},
-				Annotations: map[string]string{
-					"summary": fmt.Sprintf("[%s/%s] %s — %s pid=%d",
-						cluster, ev.Host, m.Rule.Name, ev.Comm, ev.PID),
-					"description": fmt.Sprintf("rule=%s severity=%s type=%s",
-						m.Rule.ID, m.Rule.Severity, ev.Type),
-				},
-				StartsAt: m.At,
-			})
+			amAlerts = append(amAlerts, buildAMAlert(m, cluster))
 			if m.Rule.ActionID != "" {
 				pbReqs = append(pbReqs, pbReq{
 					actionID: m.Rule.ActionID,

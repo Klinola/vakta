@@ -14,10 +14,15 @@ type Normalizer struct {
 	out       chan Event
 	nextID    atomic.Uint64
 	host      string
+	counts    [numSources]atomic.Uint64
 	wg        sync.WaitGroup
 	closeOnce sync.Once
 	done      chan struct{}
 }
+
+// numSources bounds the per-source counter array; Source values are small
+// consecutive constants starting at 1.
+const numSources = int(SourceK8sAudit) + 1
 
 // New starts goroutines for each non-nil input channel. Any of ebpfCh /
 // auditCh / k8sCh may be nil to disable that source.
@@ -62,10 +67,27 @@ func (n *Normalizer) Close() {
 
 func (n *Normalizer) emit(ev Event) {
 	ev.ID = n.nextID.Add(1)
+	if int(ev.Source) < numSources {
+		n.counts[ev.Source].Add(1)
+	}
 	select {
 	case n.out <- ev:
 	case <-n.done:
 	}
+}
+
+// Counts reports how many events each source has produced so far. A source
+// that is enabled but stays at zero is indistinguishable from a quiet one at a
+// glance, which is how two sources went unnoticed while producing nothing at
+// all: the auditd netlink socket opens fine but stays silent unless the kernel
+// has audit rules loaded, and the k8s audit tailer waits forever for a log file
+// that only exists on control-plane nodes.
+func (n *Normalizer) Counts() map[Source]uint64 {
+	out := make(map[Source]uint64, numSources-1)
+	for s := SourceEBPF; int(s) < numSources; s++ {
+		out[s] = n.counts[s].Load()
+	}
+	return out
 }
 
 func (n *Normalizer) runProbe(ch <-chan probe.Event) {

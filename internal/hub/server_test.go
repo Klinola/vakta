@@ -14,7 +14,7 @@ import (
 
 func TestServerReceivesAndDecodes(t *testing.T) {
 	ch := make(chan normalizer.Event, 16)
-	srv := httptest.NewServer(NewHandler(ch))
+	srv := httptest.NewServer(NewHandler(ch, nil))
 	defer srv.Close()
 
 	req := ingest.IngestRequest{
@@ -62,9 +62,48 @@ func TestServerReceivesAndDecodes(t *testing.T) {
 	}
 }
 
+// TestServerHandsDroppedEventsToDropHandler covers the load-shedding path: an
+// event the dispatcher cannot accept is lost to storage, but it must still be
+// offered for rule evaluation. Dropping it silently meant a critical detection
+// arriving during overload left no trace beyond a counter in the log.
+func TestServerHandsDroppedEventsToDropHandler(t *testing.T) {
+	ch := make(chan normalizer.Event, 1) // second event has nowhere to go
+	dropped := make(chan normalizer.Event, 4)
+	srv := httptest.NewServer(NewHandler(ch, func(ev normalizer.Event) { dropped <- ev }))
+	defer srv.Close()
+
+	req := ingest.IngestRequest{
+		Events: []ingest.WireEvent{
+			ingest.ToWire(normalizer.Event{ID: 1, Type: "open", Host: "n1",
+				Detail: &normalizer.OpenDetail{Path: "/tmp/a"}}),
+			ingest.ToWire(normalizer.Event{ID: 2, Type: "open", Host: "n1",
+				Detail: &normalizer.OpenDetail{Path: "/proc/kcore"}}),
+		},
+	}
+	body, _ := json.Marshal(req)
+	resp, err := http.Post(srv.URL+"/ingest/v1/events", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	select {
+	case ev := <-dropped:
+		if ev.ID != 2 {
+			t.Fatalf("dropped event ID=%d, want 2", ev.ID)
+		}
+		d, ok := ev.Detail.(*normalizer.OpenDetail)
+		if !ok || d.Path != "/proc/kcore" {
+			t.Fatalf("dropped event lost its detail: %#v", ev.Detail)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("event was dropped without being offered to the drop handler")
+	}
+}
+
 func TestServerHealth(t *testing.T) {
 	ch := make(chan normalizer.Event, 1)
-	srv := httptest.NewServer(NewHandler(ch))
+	srv := httptest.NewServer(NewHandler(ch, nil))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/ingest/v1/health")
@@ -79,7 +118,7 @@ func TestServerHealth(t *testing.T) {
 
 func TestServerRejectsInvalidJSON(t *testing.T) {
 	ch := make(chan normalizer.Event, 1)
-	srv := httptest.NewServer(NewHandler(ch))
+	srv := httptest.NewServer(NewHandler(ch, nil))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/ingest/v1/events", "application/json", bytes.NewReader([]byte("not json")))
