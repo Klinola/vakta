@@ -44,21 +44,23 @@ func watchSourceLiveness(
 		normalizer.SourceK8sAudit: sources.K8sAudit && mode == "k8s",
 	}
 
-	t := time.NewTicker(every)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			counts := n.Counts()
-			for src, on := range enabled {
-				if on && counts[src] == 0 {
-					slog.Warn("source enabled but has produced no events",
-						"source", sourceNames[src],
-						"silent_for", every.String())
-				}
-			}
+	// One check, not a recurring one. This answers "does the config match what
+	// this node can actually do", which does not change while the process runs,
+	// and repeating it would be pure noise: k8s_audit legitimately produces
+	// nothing on every node that is not a control-plane node, which is most of
+	// them.
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(every):
+	}
+
+	counts := n.Counts()
+	for src, on := range enabled {
+		if on && counts[src] == 0 {
+			slog.Warn("source enabled but has produced no events",
+				"source", sourceNames[src],
+				"silent_for", every.String())
 		}
 	}
 }
