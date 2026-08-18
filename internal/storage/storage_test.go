@@ -234,10 +234,38 @@ func TestPruneIgnoresSourceTimestamp(t *testing.T) {
 	}
 }
 
-// backdate rewrites an event's created_at so retention treats it as old.
+// backdate ages an event by both clocks retention looks at.
 func backdate(t *testing.T, db *DB, id int64, at time.Time) {
 	t.Helper()
-	if _, err := db.conn.Exec(`UPDATE events SET created_at = ? WHERE id = ?`, at.UnixNano(), id); err != nil {
+	if _, err := db.conn.Exec(`UPDATE events SET ts = ?, created_at = ? WHERE id = ?`,
+		at.UnixNano(), at.UnixNano(), id); err != nil {
 		t.Fatalf("backdate: %v", err)
+	}
+}
+
+// TestPruneKeepsRowsOldByOnlyOneClock pins the pairing: a row is deleted only
+// when the source clock and the write clock agree it is old. Either one alone
+// has burned us — ts alone emptied the table when eBPF reported nanoseconds
+// since boot, and created_at alone needs an index whose build blocked startup.
+func TestPruneKeepsRowsOldByOnlyOneClock(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "p.db"), 1)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	old := time.Now().Add(-48 * time.Hour)
+
+	staleTs, _ := db.InsertEvent(ctx, normalizer.Event{Ts: old, Type: "STALE_TS", Host: "h"})
+	staleWrite, _ := db.InsertEvent(ctx, normalizer.Event{Ts: time.Now(), Type: "STALE_WRITE", Host: "h"})
+	_, _ = db.conn.Exec(`UPDATE events SET created_at = ? WHERE id = ?`, old.UnixNano(), staleWrite)
+	_ = staleTs
+
+	if err := db.Prune(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := db.QueryEvents(ctx, EventFilter{})
+	if len(got) != 2 {
+		t.Fatalf("rows old by only one clock must survive, got %+v", got)
 	}
 }

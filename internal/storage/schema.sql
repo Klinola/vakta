@@ -14,8 +14,14 @@ CREATE TABLE IF NOT EXISTS events (
     created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts   ON events(ts DESC);
--- Prune() deletes by created_at (see storage.Prune for why not ts).
-CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
+-- Never add an index here without checking what it costs to build. This file is
+-- executed synchronously in storage.Open, before the hub binds its listener, so
+-- a CREATE INDEX over a large events table is startup latency. A short-lived
+-- idx_events_created did exactly that on a 27 GB production database: the build
+-- ran for minutes pinned at the CPU limit, the probes killed the pod first, and
+-- SQLite rolled the incomplete build back — so every restart began again and
+-- the hub never came up. Prune uses idx_events_ts instead; see storage.Prune.
+DROP INDEX IF EXISTS idx_events_created;
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(type, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_pid  ON events(pid, ts DESC);
 

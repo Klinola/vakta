@@ -438,18 +438,24 @@ func (db *DB) QueryActionRuns(ctx context.Context, f ActionRunFilter) ([]StoredA
 // Before deleting events, NULLs any alerts.event_id / action_runs.alert_id references
 // to soon-to-be-deleted rows so the alerts/action_runs tables don't carry dangling FKs.
 //
-// Retention keys off created_at — the instant this process wrote the row — and
-// never off ts, which is supplied by the event source. A source clock that is
-// wrong (eBPF once handed us nanoseconds since boot, which read as 1970) makes
-// every row look ancient and silently empties the table on the next pass,
-// taking the evidence behind every alert with it.
+// Retention requires a row to be old by both clocks: ts, which the event source
+// supplied, and created_at, the instant this process wrote the row.
+//
+// ts alone is not safe. A source clock that is wrong — eBPF once handed us
+// nanoseconds since boot, which read as 1970 — makes every row look ancient, and
+// a sweep keyed on ts alone silently empties the table on its next pass, taking
+// the evidence behind every alert with it. created_at alone is not affordable:
+// it has no index, and adding one costs minutes of startup on a large database
+// (see schema.sql). Requiring both gets the indexed scan from idx_events_ts and
+// a cheap per-row guard that a just-written row can never be deleted.
 func (db *DB) Prune(ctx context.Context) error {
 	cutoff := time.Now().Add(-time.Duration(db.retentionDays) * 24 * time.Hour).UnixNano()
 
 	// Null out alerts.event_id pointing at events about to be deleted.
 	if _, err := db.conn.ExecContext(ctx,
-		`UPDATE alerts SET event_id = NULL WHERE event_id IN (SELECT id FROM events WHERE created_at < ?)`,
-		cutoff); err != nil {
+		`UPDATE alerts SET event_id = NULL
+		   WHERE event_id IN (SELECT id FROM events WHERE ts < ? AND created_at < ?)`,
+		cutoff, cutoff); err != nil {
 		return err
 	}
 	// Null out action_runs.alert_id pointing at alerts about to be deleted.
@@ -458,7 +464,8 @@ func (db *DB) Prune(ctx context.Context) error {
 		cutoff); err != nil {
 		return err
 	}
-	if _, err := db.conn.ExecContext(ctx, `DELETE FROM events WHERE created_at < ?`, cutoff); err != nil {
+	if _, err := db.conn.ExecContext(ctx,
+		`DELETE FROM events WHERE ts < ? AND created_at < ?`, cutoff, cutoff); err != nil {
 		return err
 	}
 	if _, err := db.conn.ExecContext(ctx,
