@@ -437,12 +437,18 @@ func (db *DB) QueryActionRuns(ctx context.Context, f ActionRunFilter) ([]StoredA
 // Prune deletes events older than retentionDays and resolved alerts older than retentionDays.
 // Before deleting events, NULLs any alerts.event_id / action_runs.alert_id references
 // to soon-to-be-deleted rows so the alerts/action_runs tables don't carry dangling FKs.
+//
+// Retention keys off created_at — the instant this process wrote the row — and
+// never off ts, which is supplied by the event source. A source clock that is
+// wrong (eBPF once handed us nanoseconds since boot, which read as 1970) makes
+// every row look ancient and silently empties the table on the next pass,
+// taking the evidence behind every alert with it.
 func (db *DB) Prune(ctx context.Context) error {
 	cutoff := time.Now().Add(-time.Duration(db.retentionDays) * 24 * time.Hour).UnixNano()
 
 	// Null out alerts.event_id pointing at events about to be deleted.
 	if _, err := db.conn.ExecContext(ctx,
-		`UPDATE alerts SET event_id = NULL WHERE event_id IN (SELECT id FROM events WHERE ts < ?)`,
+		`UPDATE alerts SET event_id = NULL WHERE event_id IN (SELECT id FROM events WHERE created_at < ?)`,
 		cutoff); err != nil {
 		return err
 	}
@@ -452,7 +458,7 @@ func (db *DB) Prune(ctx context.Context) error {
 		cutoff); err != nil {
 		return err
 	}
-	if _, err := db.conn.ExecContext(ctx, `DELETE FROM events WHERE ts < ?`, cutoff); err != nil {
+	if _, err := db.conn.ExecContext(ctx, `DELETE FROM events WHERE created_at < ?`, cutoff); err != nil {
 		return err
 	}
 	if _, err := db.conn.ExecContext(ctx,

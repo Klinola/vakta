@@ -33,6 +33,9 @@ const (
 // CgroupID is the cgroup v2 ID from bpf_get_current_cgroup_id(); 0 if the
 // task is in the root cgroup or the kernel lacks cgroup v2.
 type EventHeader struct {
+	// TsNs comes from bpf_ktime_get_ns(): nanoseconds on CLOCK_MONOTONIC,
+	// i.e. since boot — NOT since the Unix epoch. Convert with
+	// normalizer.monotonicToWall before storing or comparing against dates.
 	TsNs     uint64
 	CgroupID uint64
 	PID      uint32

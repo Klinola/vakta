@@ -178,15 +178,66 @@ func TestPruneOldEvents(t *testing.T) {
 	}
 	defer db.Close()
 	ctx := context.Background()
-	old := time.Now().Add(-48 * time.Hour)
-	newer := time.Now()
-	_, _ = db.InsertEvent(ctx, normalizer.Event{Ts: old, Type: "OLD", Host: "h"})
-	_, _ = db.InsertEvent(ctx, normalizer.Event{Ts: newer, Type: "NEW", Host: "h"})
+	oldID, _ := db.InsertEvent(ctx, normalizer.Event{Ts: time.Now(), Type: "OLD", Host: "h"})
+	_, _ = db.InsertEvent(ctx, normalizer.Event{Ts: time.Now(), Type: "NEW", Host: "h"})
+	// Retention is measured from when the row was written, so age the row the
+	// same way the passage of time would.
+	backdate(t, db, oldID, time.Now().Add(-48*time.Hour))
 	if err := db.Prune(ctx); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := db.QueryEvents(ctx, EventFilter{})
 	if len(got) != 1 || got[0].Type != "NEW" {
 		t.Fatalf("Prune did not remove old: got %+v", got)
+	}
+}
+
+// TestPruneIgnoresSourceTimestamp guards the regression that emptied the events
+// table every hour: eBPF events carried nanoseconds-since-boot in ts, which
+// read as 1970, so a retention sweep keyed on ts deleted every one of them
+// minutes after it was written and NULLed the event_id of the alerts that
+// referenced them — leaving critical alerts with no evidence attached.
+func TestPruneIgnoresSourceTimestamp(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "p.db"), 30)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+
+	brokenTs := time.Unix(0, int64(12*24*time.Hour)) // ~12 days of uptime, read as 1970
+	evID, err := db.InsertEvent(ctx, normalizer.Event{Ts: brokenTs, Type: "OPEN", Host: "h"})
+	if err != nil {
+		t.Fatalf("InsertEvent: %v", err)
+	}
+	if _, err := db.InsertAlert(ctx, Alert{
+		RuleID: "open-proc-kcore", RuleName: "kernel memory", Severity: "critical",
+		EventID: evID, Status: "firing", FiredAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("InsertAlert: %v", err)
+	}
+
+	if err := db.Prune(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := db.QueryEvents(ctx, EventFilter{})
+	if len(got) != 1 {
+		t.Fatalf("prune deleted a just-written event because its source clock read %s: got %+v", brokenTs, got)
+	}
+	alerts, _ := db.QueryAlerts(ctx, AlertFilter{})
+	if len(alerts) != 1 {
+		t.Fatalf("want 1 alert, got %+v", alerts)
+	}
+	if !alerts[0].EventID.Valid || alerts[0].EventID.Int64 != evID {
+		t.Fatalf("prune broke the alert -> event link: EventID=%+v want %d", alerts[0].EventID, evID)
+	}
+}
+
+// backdate rewrites an event's created_at so retention treats it as old.
+func backdate(t *testing.T, db *DB, id int64, at time.Time) {
+	t.Helper()
+	if _, err := db.conn.Exec(`UPDATE events SET created_at = ? WHERE id = ?`, at.UnixNano(), id); err != nil {
+		t.Fatalf("backdate: %v", err)
 	}
 }

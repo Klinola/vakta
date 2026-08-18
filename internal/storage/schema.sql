@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS events (
     created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts   ON events(ts DESC);
+-- Prune() deletes by created_at (see storage.Prune for why not ts).
+CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(type, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_pid  ON events(pid, ts DESC);
 

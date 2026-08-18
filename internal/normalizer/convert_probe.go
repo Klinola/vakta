@@ -6,7 +6,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Klinola/vakta/internal/probe"
 )
@@ -15,7 +14,7 @@ import (
 func FromProbe(p probe.Event, host string) Event {
 	h := p.Header()
 	ev := Event{
-		Ts:       time.Unix(0, int64(h.TsNs)),
+		Ts:       monotonicToWall(h.TsNs),
 		Source:   SourceEBPF,
 		Host:     host,
 		CgroupID: h.CgroupID,
