@@ -52,12 +52,29 @@ func newAgentCmd() *cobra.Command {
 	return c
 }
 
+// nodeNameEnv is set from spec.nodeName by the DaemonSet. Without it the
+// hostname inside a pod is the pod name, so every event and every alert from a
+// Kubernetes agent was attributed to "vakta-agent-<suffix>" instead of the node
+// the activity actually happened on — the pod name identifies the reporter, not
+// the machine, and it changes on every reschedule.
+const nodeNameEnv = "VAKTA_NODE_NAME"
+
+// resolveHost picks the name events are attributed to: explicit config first,
+// then the node name the orchestrator injected, then the hostname.
+func resolveHost(configured string) string {
+	if configured != "" {
+		return configured
+	}
+	if node := os.Getenv(nodeNameEnv); node != "" {
+		return node
+	}
+	host, _ := os.Hostname()
+	return host
+}
+
 func runAgent(parent context.Context, cfg *config.Config) error {
 	configureLogger(cfg.Log)
-	host := cfg.Agent.NodeName
-	if host == "" {
-		host, _ = os.Hostname()
-	}
+	host := resolveHost(cfg.Agent.NodeName)
 
 	if cfg.Forwarder.HubURL != "" {
 		return runAgentForwarder(parent, cfg, host)
@@ -123,6 +140,7 @@ func runAgent(parent context.Context, cfg *config.Config) error {
 	// 5) Normalizer
 	n := normalizer.New(probeCh, auditCh, k8sCh, host)
 	defer n.Close()
+	go watchSourceLiveness(ctx, n, cfg.Sources, cfg.Agent.Mode, sourceSilenceInterval)
 
 	// 4) Engine
 	eng, err := engine.New([]string{cfg.RulesDir})
@@ -247,6 +265,7 @@ func runAgentForwarder(parent context.Context, cfg *config.Config, host string) 
 
 	n := normalizer.New(probeCh, auditCh, k8sCh, host)
 	defer n.Close()
+	go watchSourceLiveness(ctx, n, cfg.Sources, cfg.Agent.Mode, sourceSilenceInterval)
 
 	f := forwarder.New(
 		cfg.Forwarder.HubURL,
@@ -307,24 +326,7 @@ func handleEvent(
 		if err != nil {
 			slog.Warn("store alert", "err", err)
 		}
-		am.Send(ctx, []alertmanager.Alert{{
-			Labels: map[string]string{
-				"alertname":       m.Rule.Name,
-				"severity":        severityToP(m.Rule.Severity),
-				"vakta_severity":  m.Rule.Severity,
-				"rule_id":         m.Rule.ID,
-				"event_type":      ev.Type,
-				"cluster":         cluster,
-				"node":            ev.Host,
-			},
-			Annotations: map[string]string{
-				"summary": fmt.Sprintf("[%s/%s] %s — %s pid=%d",
-					cluster, ev.Host, m.Rule.Name, ev.Comm, ev.PID),
-				"description": fmt.Sprintf("rule=%s severity=%s type=%s",
-					m.Rule.ID, m.Rule.Severity, ev.Type),
-			},
-			StartsAt: m.At,
-		}})
+		am.Send(ctx, []alertmanager.Alert{buildAMAlert(m, cluster)})
 		if m.Rule.ActionID != "" {
 			if _, err := pb.Run(ctx, m.Rule.ActionID, alertID, m); err != nil {
 				slog.Warn("playbook run", "action", m.Rule.ActionID, "err", err)

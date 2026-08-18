@@ -17,15 +17,20 @@ import (
 // Server listens for ingest POSTs from agents and pushes received events into
 // the channel provided at construction time.
 type Server struct {
-	addr string
-	out  chan<- normalizer.Event
-	srv  *http.Server
+	addr   string
+	out    chan<- normalizer.Event
+	onDrop func(normalizer.Event)
+	srv    *http.Server
 }
 
 // New creates a Server that will push received events into out. out should be a
 // buffered channel; the hub event loop reads from it.
-func New(addr string, out chan<- normalizer.Event) *Server {
-	s := &Server{addr: addr, out: out}
+//
+// onDrop, if non-nil, is handed every event the server could not push into out.
+// It runs on the request goroutine, so it must not block on IO — see
+// newDropEvaluator in cmd/vakta for what the hub does with it.
+func New(addr string, out chan<- normalizer.Event, onDrop func(normalizer.Event)) *Server {
+	s := &Server{addr: addr, out: out, onDrop: onDrop}
 	s.srv = &http.Server{
 		Addr:              addr,
 		Handler:           s.handler(),
@@ -36,8 +41,8 @@ func New(addr string, out chan<- normalizer.Event) *Server {
 
 // NewHandler returns just the HTTP handler that pushes received events into
 // out. Exposed so tests can wrap it in an httptest.Server.
-func NewHandler(out chan<- normalizer.Event) http.Handler {
-	s := &Server{out: out}
+func NewHandler(out chan<- normalizer.Event, onDrop func(normalizer.Event)) http.Handler {
+	s := &Server{out: out, onDrop: onDrop}
 	return s.handler()
 }
 
@@ -97,6 +102,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			accepted++
 		case <-blockCtx.Done():
 			dropped++
+			// A dropped event is lost to storage, but it must not be lost to
+			// detection: hand it to the drop handler so rules still see it.
+			if s.onDrop != nil {
+				s.onDrop(ev)
+			}
 		}
 		blockCancel()
 	}
