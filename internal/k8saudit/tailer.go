@@ -5,6 +5,7 @@ package k8saudit
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -53,6 +54,23 @@ func NewWithOptions(ctx context.Context, path string, opts Options) (*Tailer, er
 		ReOpen:    true,
 		MustExist: false,
 		Poll:      false,
+		// Start at the end of the file, not the beginning.
+		//
+		// The k3s API server rotates its audit log at 100 MB — roughly every
+		// 50 minutes on a busy cluster — so a tailer that starts at byte 0
+		// reads and JSON-parses up to 100 MB the moment it opens. That is what
+		// OOM-killed the agent on the control-plane node within three seconds
+		// of every start, 159 times: the node was the only one where the file
+		// exists, steady-state usage is ~55 MiB against a 256 MiB limit, and
+		// each restart replayed the file again.
+		//
+		// Raising the limit would only have made it succeed at re-ingesting
+		// history: stale audit events reinserted on every restart, with rules
+		// re-firing on activity from hours ago. Runtime monitoring wants what
+		// happens next, so the gap while the agent is down is the right thing
+		// to lose. Rotation is unaffected — ReOpen picks up the new file from
+		// its start, and a freshly rotated file begins empty.
+		Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
 	})
 	if err != nil {
 		return nil, err
