@@ -76,9 +76,12 @@ func TestProbeReceivesConnectEventWithErrno(t *testing.T) {
 	// Let attach settle before connect.
 	time.Sleep(100 * time.Millisecond)
 
-	// Trigger a guaranteed-failing connect: TCP port 1 on loopback.
-	// Almost no box runs anything on port 1 → -ECONNREFUSED (-111).
-	c, _ := net.DialTimeout("tcp", "127.0.0.1:1", 200*time.Millisecond)
+	// Trigger a guaranteed-failing connect: TCP 4444 on loopback. Nothing
+	// listens there → -ECONNREFUSED (-111). Port 4444 specifically because the
+	// kernel now only emits CONNECT for ports a rule names (see
+	// connect_port_is_watched in probe.bpf.c); this used to use port 1, which
+	// is no longer reported.
+	c, _ := net.DialTimeout("tcp", "127.0.0.1:4444", 200*time.Millisecond)
 	if c != nil {
 		_ = c.Close()
 	}
@@ -91,18 +94,18 @@ func TestProbeReceivesConnectEventWithErrno(t *testing.T) {
 			if !ok {
 				continue
 			}
-			if e.DstPort != 1 {
+			if e.DstPort != 4444 {
 				continue
 			}
 			// Expect negative ret. Common values:
 			//   -111 ECONNREFUSED   (port closed)
 			//   -115 EINPROGRESS    (non-blocking connect in flight, less likely here)
 			if e.Ret >= 0 {
-				t.Fatalf("connect to 127.0.0.1:1 should fail with negative errno, got Ret = %d", e.Ret)
+				t.Fatalf("connect to 127.0.0.1:4444 should fail with negative errno, got Ret = %d", e.Ret)
 			}
 			return
 		case <-deadline:
-			t.Fatalf("no ConnectEvent to 127.0.0.1:1 observed; stats=%+v", m.Stats())
+			t.Fatalf("no ConnectEvent to 127.0.0.1:4444 observed; stats=%+v", m.Stats())
 		}
 	}
 }

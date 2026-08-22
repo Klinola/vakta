@@ -385,6 +385,40 @@ static __always_inline int open_path_is_sensitive(const char *p, int len) {
     return 0;
 }
 
+/* ---- CONNECT port allowlist ---------------------------------------------
+ *
+ * Same shape as the OPEN allowlist above, same reason. With OPEN filtered,
+ * CONNECT became 95.6% of everything stored — 78% of it port 53, the rest
+ * Redis 6379, the gRPC range and Mongo 27017. That is the cluster talking to
+ * itself, and no rule looks at any of it.
+ *
+ * The seven CONNECT rules key off dst_port only: six enumerate ports, and
+ * connect-high-port-nonstandard-process takes everything above 49151. That is
+ * the whole set. TestConnectRuleSetMatchesKernelAllowlist pins it.
+ *
+ * Kept deliberately as a switch on a scalar: no loops, no pointer arithmetic,
+ * nothing for the verifier to argue with.
+ */
+static __always_inline int connect_port_is_watched(__u16 dport) {
+    if (dport > 49151) return 1;   /* connect-high-port-nonstandard-process */
+    switch (dport) {
+    /* connect-to-known-c2-port */
+    case 1337: case 4444: case 6666: case 8443: case 9001:
+    /* connect-known-rat-port (65535 already covered by the range above) */
+    case 5554: case 12345: case 13337: case 31337: case 54321:
+    /* connect-proxy-port-noninfra */
+    case 1080: case 3128:
+    /* connect-irc-port */
+    case 6660: case 6661: case 6662: case 6663: case 6664:
+    case 6665: case 6667: case 6668: case 6669: case 6697:
+    /* connect-tor-socks-proxy / connect-tor-orport */
+    case 9002: case 9003: case 9030:
+    case 9050: case 9051: case 9150: case 9151:
+        return 1;
+    }
+    return 0;
+}
+
 static __always_inline int do_open(const char *path, __s32 flags) {
     __u32 zero = 0;
     struct path_scratch *s = bpf_map_lookup_elem(&open_path_scratch, &zero);
@@ -494,7 +528,12 @@ int BPF_PROG(handle_raw_sys_enter, struct pt_regs *regs, long id) {
             bpf_probe_read_user(&s6, sizeof(s6), uservaddr);
             e.dport = bpf_ntohs(s6.sin6_port);
             __builtin_memcpy(&e.addr[0], &s6.sin6_addr, 16);
+        } else {
+            /* No port, no address: every CONNECT rule keys off dst_port and
+             * dst_ip, so an AF_UNIX or AF_NETLINK connect can never match one. */
+            return 0;
         }
+        if (!connect_port_is_watched(e.dport)) return 0;
         store_pending(VK_CONNECT, &e, sizeof(e));
         break;
     }
