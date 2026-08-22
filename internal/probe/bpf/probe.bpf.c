@@ -287,12 +287,132 @@ static __always_inline int do_exec_attempt(const char *filename) {
     return 0;
 }
 
+/* ---- OPEN path allowlist -------------------------------------------------
+ *
+ * Emitting every open()/openat() is what filled a production node's root disk:
+ * ~6,800 events/s cluster-wide, 99.8% of everything stored, and none of it
+ * readable by any rule — the traffic was kubelet, containerd and irqbalance
+ * polling /proc and /sys. See docs/ops/incident-log.md (2026-08-18→22) in the
+ * Taberna repo.
+ *
+ * The ONLY consumers of VK_OPEN are the four rules in
+ * internal/engine/builtin_rules/open-sensitive-file.yaml, and they match a
+ * fully enumerable path set. Filtering here rather than in userspace keeps the
+ * pending-map write and the ringbuf reservation off the hot path too.
+ *
+ * The set below must stay a SUPERSET of what those rules can match, or the
+ * rule silently stops firing. TestOpenRuleSetMatchesKernelAllowlist
+ * (internal/engine/open_allowlist_test.go) fails the build if a new OPEN rule
+ * appears without this list being revisited.
+ *
+ * Matching is on the raw syscall argument, exactly the string the normalizer
+ * puts in detail.path — so the kernel and the rule see the same bytes. Note
+ * that relative opens (openat(dirfd, "id_rsa")) have never matched the ssh-key
+ * rule, whose regex requires a '/' before the basename; requiring the same '/'
+ * here is behaviour-preserving, not a new blind spot.
+ */
+#define SENS_LIT_MAX 20   /* strlen("/var/run/docker.sock") */
+
+/* The candidate path is staged in a per-CPU map, not on the stack: the suffix
+ * check indexes at a runtime offset, and the verifier rejects variable-offset
+ * reads from stack ("invalid unbounded variable-offset read from stack") while
+ * allowing them into a map value whose bounds it can prove. Staging here also
+ * keeps the 280-byte struct open_event off the stack for the ~100% of opens
+ * that are dropped. Same per-CPU safety argument as pending_scratch: an enter
+ * handler runs to completion before the same CPU runs another. */
+struct path_scratch { char p[PATH_MAX_LEN]; };
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, struct path_scratch);
+} open_path_scratch SEC(".maps");
+
+/* The event itself is staged per-CPU as well. `struct open_event` is 280 bytes
+ * and the sys_enter dispatcher inlines every case into one frame, so keeping it
+ * on the stack now blows the 512-byte BPF stack limit. */
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, struct open_event);
+} open_evt_scratch SEC(".maps");
+
+static __always_inline int lit_eq(const char *p, const char *lit, int n) {
+    #pragma unroll
+    for (int i = 0; i < SENS_LIT_MAX; i++) {
+        if (i >= n) break;
+        if (p[i] != lit[i]) return 0;
+    }
+    return 1;
+}
+
+/* Hide a value from clang's value-range analysis. Without this the bounds
+ * check below is deleted as provably-true (len <= 255 and n >= 7, so idx <=
+ * 248) and the verifier — which recomputes idx from the *unchecked* return of
+ * bpf_probe_read_user_str rather than from the checked len — then rejects the
+ * load as "R1 unbounded memory access". */
+#define barrier_var(var) asm volatile("" : "+r"(var))
+
+static __always_inline int lit_suffix(const char *p, int len, const char *lit, int n) {
+    if (len < n) return 0;
+    #pragma unroll
+    for (int i = 0; i < 12; i++) {
+        if (i >= n) break;
+        unsigned int idx = (unsigned int)(len - n + i);
+        barrier_var(idx);
+        if (idx >= PATH_MAX_LEN) return 0;
+        if (p[idx] != lit[i]) return 0;
+    }
+    return 1;
+}
+
+static __always_inline int open_path_is_sensitive(const char *p, int len) {
+    /* exact — /etc/shadow, docker socket, kernel memory devices */
+    if (len == 11 && lit_eq(p, "/etc/shadow", 11)) return 1;
+    if (len == 12 && lit_eq(p, "/etc/gshadow", 12)) return 1;
+    if (len == 20 && lit_eq(p, "/var/run/docker.sock", 20)) return 1;
+    if (len == 16 && lit_eq(p, "/run/docker.sock", 16)) return 1;
+    if (len == 11 && lit_eq(p, "/proc/kcore", 11)) return 1;
+    if (len == 10 && lit_eq(p, "/proc/kmem", 10)) return 1;
+    if (len ==  8 && lit_eq(p, "/dev/mem", 8)) return 1;
+    if (len ==  9 && lit_eq(p, "/dev/kmem", 9)) return 1;
+    /* suffix — ssh private keys anywhere on the filesystem */
+    if (lit_suffix(p, len, "/id_rsa", 7)) return 1;
+    if (lit_suffix(p, len, "/id_ecdsa", 9)) return 1;
+    if (lit_suffix(p, len, "/id_ed25519", 11)) return 1;
+    if (lit_suffix(p, len, "/id_dsa", 7)) return 1;
+    return 0;
+}
+
 static __always_inline int do_open(const char *path, __s32 flags) {
-    struct open_event e = {};
-    fill_hdr(&e.hdr, VK_OPEN);
-    e.flags = flags;
-    bpf_probe_read_user_str(&e.path, sizeof(e.path), path);
-    store_pending(VK_OPEN, &e, sizeof(e));
+    __u32 zero = 0;
+    struct path_scratch *s = bpf_map_lookup_elem(&open_path_scratch, &zero);
+    if (!s) { incr_drop(); return 0; }
+
+    /* Read the path FIRST and decide before building anything: for the ~100%
+     * of opens that are dropped, this is all the work that gets done. */
+    long n = bpf_probe_read_user_str(s->p, sizeof(s->p), path);
+    if (n <= 1) return 0;                      /* unreadable, or empty string */
+    int len = (int)n - 1;                      /* strlen, NUL excluded */
+    if (len < 0 || len >= PATH_MAX_LEN) return 0;
+    if (!open_path_is_sensitive(s->p, len)) return 0;
+
+    /* Nothing is stored for a filtered open, so the matching sys_exit finds no
+     * pending entry and emit_paired() returns 0 — see emit_paired's !p check. */
+    struct open_event *e = bpf_map_lookup_elem(&open_evt_scratch, &zero);
+    if (!e) { incr_drop(); return 0; }
+    __builtin_memset(e, 0, sizeof(*e));
+    fill_hdr(&e->hdr, VK_OPEN);
+    e->ret   = 0;                              /* sys_exit overwrites this */
+    e->flags = flags;
+    /* Fixed-size copy: bytes past the NUL may hold fragments of a path this
+     * CPU saw earlier. Userspace reads path as NUL-terminated, so they are
+     * never interpreted — copying the whole field is what keeps the emitted
+     * path identical to the one the filter just matched (a second
+     * bpf_probe_read_user_str here would reopen a TOCTOU evasion window). */
+    __builtin_memcpy(e->path, s->p, PATH_MAX_LEN);
+    store_pending(VK_OPEN, e, sizeof(*e));
     return 0;
 }
 
