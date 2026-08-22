@@ -5,8 +5,11 @@ package k8saudit
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -47,13 +50,38 @@ func New(ctx context.Context, path string) (*Tailer, error) {
 	return NewWithOptions(ctx, path, Options{})
 }
 
+// ErrLogAbsent means this node has no API-server audit log. Only the
+// control-plane node writes one, so on every other node the k8s_audit source
+// has nothing to read and the caller should carry on without it.
+var ErrLogAbsent = errors.New("k8saudit: audit log not present on this node")
+
 // NewWithOptions opens the audit log file with explicit options.
+//
+// Every setting below was paid for by an outage; none of them are defaults.
+// MustExist and Poll come from the 2026-08-18→22 incident, where this source
+// took app-4's agent down for four days (184 restarts, zero runtime security
+// monitoring on that node); Location comes from the OOM loop on the
+// control-plane node described further down.
+//
+//   - The file must already exist. It used to be tailed with MustExist:false,
+//     which on the 7 of 8 nodes that never have one meant waiting forever on a
+//     path that cannot appear.
+//   - Poll, not inotify. nxadm/tail creates its shared inotify watcher from a
+//     package goroutine, and if fsnotify.NewWatcher() fails — app-4 had hit the
+//     default fs.inotify.max_user_instances of 128, shared by every root
+//     process on the node — it calls util.Fatal, which is os.Exit(1). That is
+//     unrecoverable from the caller: no error is returned and no recover() can
+//     catch it, so an optional source that yields nothing on this node kills
+//     the whole agent. Polling never touches inotify, so the path is gone.
 func NewWithOptions(ctx context.Context, path string, opts Options) (*Tailer, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("%w: %s: %v", ErrLogAbsent, path, err)
+	}
 	t, err := tail.TailFile(path, tail.Config{
 		Follow:    true,
 		ReOpen:    true,
-		MustExist: false,
-		Poll:      false,
+		MustExist: true,
+		Poll:      true,
 		// Start at the end of the file, not the beginning.
 		//
 		// The k3s API server rotates its audit log at 100 MB — roughly every

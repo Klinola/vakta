@@ -13,6 +13,31 @@ import (
 	"github.com/cilium/ebpf"
 )
 
+type probeOpenEvent struct {
+	_   structs.HostLayout
+	Hdr struct {
+		_         structs.HostLayout
+		TsNs      uint64
+		CgroupId  uint64
+		Pid       uint32
+		Ppid      uint32
+		Uid       uint32
+		Gid       uint32
+		EventType uint32
+		Comm      [16]int8
+		_         [4]byte
+	}
+	Ret   int64
+	Flags int32
+	Path  [256]int8
+	_     [4]byte
+}
+
+type probePathScratch struct {
+	_ structs.HostLayout
+	P [256]int8
+}
+
 type probePendingEvent struct {
 	_         structs.HostLayout
 	EventType uint32
@@ -26,6 +51,8 @@ type probePendingEvent struct {
 const (
 	probeMapDrops               = "drops"
 	probeMapEvents              = "events"
+	probeMapOpenEvtScratch      = "open_evt_scratch"
+	probeMapOpenPathScratch     = "open_path_scratch"
 	probeMapPending             = "pending"
 	probeMapPendingScratch      = "pending_scratch"
 	probeProgHandleDoInitModule = "handle_do_init_module"
@@ -86,10 +113,12 @@ type probeProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type probeMapSpecs struct {
-	Drops          *ebpf.MapSpec `ebpf:"drops"`
-	Events         *ebpf.MapSpec `ebpf:"events"`
-	Pending        *ebpf.MapSpec `ebpf:"pending"`
-	PendingScratch *ebpf.MapSpec `ebpf:"pending_scratch"`
+	Drops           *ebpf.MapSpec `ebpf:"drops"`
+	Events          *ebpf.MapSpec `ebpf:"events"`
+	OpenEvtScratch  *ebpf.MapSpec `ebpf:"open_evt_scratch"`
+	OpenPathScratch *ebpf.MapSpec `ebpf:"open_path_scratch"`
+	Pending         *ebpf.MapSpec `ebpf:"pending"`
+	PendingScratch  *ebpf.MapSpec `ebpf:"pending_scratch"`
 }
 
 // probeVariableSpecs contains global variables before they are loaded into the kernel.
@@ -118,16 +147,20 @@ func (o *probeObjects) Close() error {
 //
 // It can be passed to loadProbeObjects or ebpf.CollectionSpec.LoadAndAssign.
 type probeMaps struct {
-	Drops          *ebpf.Map `ebpf:"drops"`
-	Events         *ebpf.Map `ebpf:"events"`
-	Pending        *ebpf.Map `ebpf:"pending"`
-	PendingScratch *ebpf.Map `ebpf:"pending_scratch"`
+	Drops           *ebpf.Map `ebpf:"drops"`
+	Events          *ebpf.Map `ebpf:"events"`
+	OpenEvtScratch  *ebpf.Map `ebpf:"open_evt_scratch"`
+	OpenPathScratch *ebpf.Map `ebpf:"open_path_scratch"`
+	Pending         *ebpf.Map `ebpf:"pending"`
+	PendingScratch  *ebpf.Map `ebpf:"pending_scratch"`
 }
 
 func (m *probeMaps) Close() error {
 	return _ProbeClose(
 		m.Drops,
 		m.Events,
+		m.OpenEvtScratch,
+		m.OpenPathScratch,
 		m.Pending,
 		m.PendingScratch,
 	)
