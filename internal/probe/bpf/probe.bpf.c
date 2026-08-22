@@ -435,7 +435,9 @@ static __always_inline __u32 parse_proc_mem_pid(const char *upath) {
         return 0;
     }
     if (pid == 0 || i >= 28) return 0;
-    if (buf[i] != '/' || buf[i+1] != 'm' || buf[i+2] != 'e' || buf[i+3] != 'n') return 0;
+    /* "/mem" — this compared the last byte against 'n' until 2026-08-22, so no
+     * real path ever matched and PROC_MEM_OPEN had never once fired. */
+    if (buf[i] != '/' || buf[i+1] != 'm' || buf[i+2] != 'e' || buf[i+3] != 'm') return 0;
     return pid;
 }
 
